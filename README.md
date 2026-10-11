@@ -37,3 +37,5 @@ Settings → Pages → Deploy from a branch → `main`, folder `/ (root)`.
 ## Publishing
 
 The site is published by the "Publish site" workflow (`.github/workflows/pages.yml`), not straight from a branch. It takes the app from `main` and adds the search and social files from the `seo` branch (tags, structured data, the About section, the preview image, `llms.txt` and the sitemap) at the `<!-- seo:head -->` and `<!-- seo:about -->` markers. Pushing to either branch republishes the site.
+
+This needs **Settings → Pages → Build and deployment → Source** set to **GitHub Actions**. If it's set to deploy from a branch, GitHub's own publisher also runs on every push and can overwrite the site with `main` alone, without the SEO files.
