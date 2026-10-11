@@ -16,7 +16,7 @@ The page only reads from the controller. It never changes settings.
 
 On wide screens it switches to a desktop layout with a section list in a sidebar and cards in columns. The Auto / Phone / Desktop buttons override this.
 
-The plain-language notes are in `guide.js`. Official descriptions and defaults come from VESC Tool's parameter files (`desc/`) and, for Refloat, from the definition saved inside each export.
+The plain-language notes are in `guide.js`. Official descriptions, defaults and the data layout for each firmware version come from VESC Tool's parameter files (`desc/`) and, for Refloat, from the definition saved inside each export.
 
 ## Use
 
@@ -26,7 +26,7 @@ Open the GitHub Pages site in Chrome on Android (Web Bluetooth needs Chrome and 
 2. Tap **Connect and read config** and pick the controller. Boards that use a VESC Express for Bluetooth are handled automatically.
 3. The config viewer opens with your settings. Tap **Download config** to save the JSON file.
 
-Readable motor and app values are built in for firmware 6.05, 6.06, 7.00 and 7.01. On other versions the raw data is still saved.
+Readable motor and app values work for every VESC firmware release from 3.55 to 7.01, including the built-in Balance app in older firmware (3.62 to 6.02). The definitions in `desc/` are generated from VESC Tool's parameter files. On any other version the raw data is still saved, and Refloat or Float package settings are always readable because the controller sends their definition.
 
 ## Hosting
 

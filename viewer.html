@@ -150,11 +150,12 @@ body.desk details.section { scroll-margin-top: 12px }
 </div>
 
 <input type="file" id="file" accept=".json,application/json" hidden>
-<script src="guide.js?v=2"></script>
+<script src="core.js?v=3"></script>
+<script src="guide.js?v=3"></script>
 <script>
 const $ = s => document.querySelector(s);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(k => k != null && k !== "")); return e; };
-const UNUSED = new Set(["Motor/BLDC", "Motor/DC", "Motor/PID Controllers", "App/PPM", "App/ADC", "App/NRF", "App/PAS", "App/VESC Remote", "Refloat/Internal"]);
+const UNUSED = new Set(["Motor/BLDC", "Motor/DC", "Motor/GPD", "Motor/PID Controllers", "App/PPM", "App/ADC", "App/NRF", "App/PAS", "App/VESC Remote", "Refloat/Internal"]);
 
 let state = { cfg: null, tabs: [], tab: null };
 
@@ -206,9 +207,22 @@ function showErr(m) { const e = $("#err") || $("#meta"); e.textContent = m; }
 
 async function load(cfg) {
   if (!cfg || !cfg.firmware) throw new Error("missing firmware info");
-  const fw = cfg.firmware, ver = `${fw.major}.${String(fw.minor).padStart(2, "0")}`;
-  let desc = null;
-  try { desc = await (await fetch(`desc/${ver}.json`)).json(); } catch (e) { desc = null; }
+  const fw = cfg.firmware, ver = fwVersion(fw);
+  const desc = await loadDesc(ver);
+  const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  // Files can carry raw data without readable values (for example firmware the saver had no list for). Decode them here.
+  for (const key of ["mcconf", "appconf"]) {
+    const sec = cfg[key];
+    if (sec && !sec.values && sec.raw && desc) { try { sec.values = decodeConfig(unb64(sec.raw), defsFromDesc(desc[key])).values; } catch (e) {} }
+  }
+  for (const pkg of cfg.packages || []) {
+    if (pkg.values || !pkg.raw || !pkg.definitionCompressed) continue;
+    try {
+      const pdefs = defsFromXml(new TextDecoder().decode(await qUncompress(unb64(pkg.definitionCompressed))), new DOMParser());
+      pkg.values = decodeConfig(unb64(pkg.raw), pdefs).values;
+      pkg.name = pkg.name || pdefs.p.hw_name?.[0];
+    } catch (e) {}
+  }
   const tabs = [];
   for (const pkg of cfg.packages || []) {
     if (!pkg.values) continue;
