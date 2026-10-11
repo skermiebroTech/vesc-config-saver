@@ -4,6 +4,7 @@
 
 - Site: https://vesc.9dtr.com/
 - Config viewer: https://vesc.9dtr.com/viewer.html
+- Ride logger: https://vesc.9dtr.com/logger.html
 - Source code: https://github.com/skermiebroTech/vesc-config-saver
 
 ## What it reads
@@ -12,8 +13,13 @@
 - Every VESC device on the board's CAN bus, including a VESC Express used as a Bluetooth bridge, and the VESC Express's own settings
 - Firmware 3.55 to 7.01, including the built-in Balance app in firmware 3.62 to 6.02
 
+## Ride logger
+- Live logging over Bluetooth, about 10 to 30 samples a second. With Refloat it uses Refloat's REALTIME_DATA command (speed, ERPM, motor and battery current, duty, voltage, temperatures, pitch, roll, setpoints, foot sensors, package state, pushback type and stop reason). Without Refloat it uses COMM_GET_VALUES_SELECTIVE and COMM_GET_IMU_DATA.
+- Downloads Refloat's on-board data recording (DATA_RECORD command): a few seconds at the full balance-loop rate, recorded in the controller. Requires firmware with the data recording buffer (Refloat Extras, for example v7.00-rflt-xtras).
+- Synced charts, an event list (disengages with their reason, pushbacks, wheel slip, alerts) and CSV export.
+
 ## Safety and privacy
-- Only read commands are sent (COMM_FW_VERSION, COMM_PING_CAN, COMM_GET_MCCONF, COMM_GET_APPCONF, COMM_GET_CUSTOM_CONFIG_XML, COMM_GET_CUSTOM_CONFIG, wrapped in COMM_FORWARD_CAN for devices on CAN). No write, reboot or firmware commands exist in the code.
+- Only read commands are sent (COMM_FW_VERSION, COMM_PING_CAN, COMM_GET_MCCONF, COMM_GET_APPCONF, COMM_GET_CUSTOM_CONFIG_XML, COMM_GET_CUSTOM_CONFIG, wrapped in COMM_FORWARD_CAN for devices on CAN). No write, reboot or firmware commands exist in the code. The ride logger also sends COMM_GET_VALUES_SELECTIVE, COMM_GET_IMU_DATA and Refloat package commands (INFO, REALTIME_DATA, and DATA_RECORD status and download only). Downloading Refloat's recording pauses it, the same as Refloat's own UI; it restarts on the next engage. The commands that start or stop recording or change its settings are not used.
 - Passwords and PINs (VESC Express Wi-Fi passwords, Bluetooth PIN, TCP hub password) are replaced with "(hidden)" and never saved.
 - Runs entirely in the browser. Nothing is uploaded.
 

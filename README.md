@@ -6,6 +6,7 @@ This branch holds the search and social files, kept out of `main`. The "Publish 
 |---|---|
 | `head-index.html` | Search, social preview and structured-data tags, inserted at `<!-- seo:head -->` in `index.html` |
 | `head-viewer.html` | The same for `viewer.html` |
+| `head-logger.html` | The same for `logger.html` |
 | `about-index.html` | The About and FAQ section, inserted at `<!-- seo:about -->` in `index.html` |
 | `og.png` | Social preview image (Discord, WhatsApp, X and others) |
 | `llms.txt` | Plain-text summary for AI assistants |
