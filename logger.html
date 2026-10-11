@@ -182,13 +182,24 @@ const STATE = { 0: "Disabled", 1: "Startup", 2: "Ready", 3: "Running" };
 const BEEP = { 1: "low voltage", 2: "high voltage", 3: "controller temperature", 4: "motor temperature", 5: "current", 6: "duty", 7: "sensors", 8: "low battery", 9: "idle", 10: "error" };
 const FAULTS = ["NONE", "OVER_VOLTAGE", "UNDER_VOLTAGE", "DRV", "ABS_OVER_CURRENT", "OVER_TEMP_FET", "OVER_TEMP_MOTOR", "GATE_DRIVER_OVER_VOLTAGE", "GATE_DRIVER_UNDER_VOLTAGE", "MCU_UNDER_VOLTAGE", "BOOTING_FROM_WATCHDOG_RESET", "ENCODER_SPI", "ENCODER_SINCOS_BELOW_MIN_AMPLITUDE", "ENCODER_SINCOS_ABOVE_MAX_AMPLITUDE", "FLASH_CORRUPTION", "HIGH_OFFSET_CURRENT_SENSOR_1", "HIGH_OFFSET_CURRENT_SENSOR_2", "HIGH_OFFSET_CURRENT_SENSOR_3", "UNBALANCED_CURRENTS", "BRK", "RESOLVER_LOT", "RESOLVER_DOS", "RESOLVER_LOS", "FLASH_CORRUPTION_APP_CFG", "FLASH_CORRUPTION_MC_CFG", "ENCODER_NO_MAGNET", "ENCODER_MAGNET_TOO_STRONG", "PHASE_FILTER", "ENCODER_FAULT", "LV_OUTPUT_FAULT"];
 
-// Live data fields requested from Refloat's REALTIME_DATA (mask1 bit -> column).
-const RT1 = [[6, "speed_kmh"], [7, "erpm"], [8, "motor_current_a"], [10, "filtered_current_a"], [11, "duty_pct"], [12, "battery_v"], [13, "battery_current_a"],
-  [14, "battery_pct"], [15, "controller_temp_c"], [16, "motor_temp_c"], [17, "pitch_deg"], [18, "balance_pitch_deg"], [19, "roll_deg"], [20, "footpad_left_v"],
-  [21, "footpad_right_v"], [23, "setpoint_deg"], [24, "atr_setpoint_deg"], [25, "brake_tilt_setpoint_deg"], [26, "torque_tilt_setpoint_deg"],
-  [27, "turn_tilt_setpoint_deg"], [28, "remote_setpoint_deg"], [29, "balance_current_a"], [30, "loop_hz"]];
-const RT2 = [[1, "distance_m"], [4, "amp_hours"], [6, "watt_hours"]];
-const MASK1 = RT1.reduce((m, [b]) => m | (1 << b), 1 | 2) >>> 0, MASK2 = RT2.reduce((m, [b]) => m | (1 << b), 0) >>> 0;
+// Everything Refloat's REALTIME_DATA offers. mask1 bit -> column (all float values).
+const RT1 = [[6, "speed_kmh"], [7, "erpm"], [8, "motor_current_a"], [9, "dir_current_a"], [10, "filtered_current_a"], [11, "duty_pct"], [12, "battery_v"],
+  [13, "battery_current_a"], [14, "battery_pct"], [15, "controller_temp_c"], [16, "motor_temp_c"], [17, "pitch_deg"], [18, "balance_pitch_deg"], [19, "roll_deg"],
+  [20, "footpad_left_v"], [21, "footpad_right_v"], [22, "remote_input"], [23, "setpoint_deg"], [24, "atr_setpoint_deg"], [25, "brake_tilt_setpoint_deg"],
+  [26, "torque_tilt_setpoint_deg"], [27, "turn_tilt_setpoint_deg"], [28, "remote_setpoint_deg"], [29, "balance_current_a"], [30, "loop_hz"]];
+// mask2 bit -> [column, encoding]: "u32" always uint32, "f64" always float64, otherwise float.
+const RT2 = [[0, "odometer_m", "u32"], [1, "distance_m"], [2, "charging_v"], [3, "charging_a"], [4, "amp_hours"], [5, "amp_hours_charged"], [6, "watt_hours"],
+  [7, "watt_hours_charged"], [8, "motor_id_a"]];
+const RT2_GNSS = [[9, "gnss_lat", "f64"], [10, "gnss_lon", "f64"], [11, "gnss_altitude_m"], [12, "gnss_speed_kmh"], [13, "gnss_hdop"], [14, "gnss_last_update_ticks", "u32"]];
+const MASK1 = RT1.reduce((m, [b]) => m | (1 << b), 1 | 2) >>> 0;
+const maskOf = list => list.reduce((m, [b]) => m | (1 << b), 0) >>> 0;
+const STATE_COLS = ["state", "package_mode", "footpad", "pushback", "stop_reason", "alert", "wheelslip", "charging", "fatal_error", "darkride", "recording_active"];
+const MODE = { 0: "Normal", 1: "Handtest", 2: "Flywheel" };
+// VESC's own live values (COMM_GET_VALUES_SELECTIVE, bits 0-21) and IMU (COMM_GET_IMU_DATA).
+const VALUE_COLS = ["vesc_controller_temp_c", "vesc_motor_temp_c", "vesc_motor_current_a", "vesc_battery_current_a", "vesc_id_a", "vesc_iq_a", "vesc_duty_pct", "vesc_erpm",
+  "vesc_battery_v", "vesc_amp_hours", "vesc_amp_hours_charged", "vesc_watt_hours", "vesc_watt_hours_charged", "vesc_tachometer", "vesc_tachometer_abs", "fault",
+  "vesc_position_deg", "vesc_can_id", "vesc_mosfet1_temp_c", "vesc_mosfet2_temp_c", "vesc_mosfet3_temp_c", "vesc_vd_v", "vesc_vq_v", "vesc_timeout", "vesc_kill_switch"];
+const IMU_COLS = ["imu_roll_deg", "imu_pitch_deg", "imu_yaw_deg", "accel_x_g", "accel_y_g", "accel_z_g", "gyro_x_dps", "gyro_y_dps", "gyro_z_dps", "quat_w", "quat_x", "quat_y", "quat_z"];
 const PCT = new Set(["duty_pct", "battery_pct"]);
 // Refloat's recorded value IDs -> the same column names and units as the live log.
 const REC = { "speed": ["speed_kmh", 1], "erpm": ["erpm", 1], "current": ["motor_current_a", 1], "dir_current": ["dir_current_a", 1], "filt_current": ["filtered_current_a", 1],
@@ -254,26 +265,34 @@ $("#live").onclick = () => live ? stopLive() : startLive();
 
 async function startLive() {
   const rf = board.refloat;
-  const cols = rf ? ["state", "footpad", "pushback", "stop_reason", "wheelslip", ...RT1.map(c => c[1]), ...RT2.map(c => c[1])]
-    : ["controller_temp_c", "motor_temp_c", "motor_current_a", "battery_current_a", "duty_pct", "erpm", "battery_v", "fault", "roll_deg", "pitch_deg", "yaw_deg"];
-  live = { source: "live", started: new Date().toISOString(), columns: ["time_s", ...cols], rows: [], t0: null, last: {}, events: [], useRefloat: !!rf, failures: 0 };
+  $("#live").disabled = true;
+  // A VESC BMS on the CAN bus, if there is one.
+  let bmsCells = 0;
+  try { const b = await readBms(); bmsCells = b.cells.length; if (bmsCells) log(`VESC BMS found: ${bmsCells} cells`); } catch (e) {}
+  const gnss = !!(rf && rf.capabilities & 4);
+  const rt2 = rf ? [...RT2, ...(gnss ? RT2_GNSS : [])] : [];
+  const bmsCols = bmsCells ? ["bms_v_total", "bms_current_a", "bms_soc_pct", "bms_cell_min_v", "bms_cell_max_v", "bms_cell_diff_mv", "bms_temp_max_c", ...Array.from({ length: bmsCells }, (_, i) => `bms_cell_${i + 1}_v`)] : [];
+  const cols = rf ? [...STATE_COLS, ...RT1.map(c => c[1]), ...rt2.map(c => c[1]), ...VALUE_COLS, ...IMU_COLS, ...bmsCols] : [...VALUE_COLS, ...IMU_COLS, ...bmsCols];
+  live = { source: "live", started: new Date().toISOString(), columns: ["time_s", ...cols], rows: [], t0: null, last: {}, events: [], useRefloat: !!rf, rt2, mask2: maskOf(rt2), bms: bmsCells > 0, failures: 0, n: 0 };
+  $("#live").disabled = false;
   $("#live").textContent = "Stop live log"; $("#live").classList.add("stop");
   $("#readouts").hidden = false; $("#fetch").disabled = true;
   await keepAwake();
-  log("Live log started" + (rf ? " (Refloat live data)" : " (standard VESC values)"));
+  log(`Live log started: ${cols.length} values` + (rf ? ". Refloat data every sample, VESC values every 5th, raw IMU every 10th" : ", VESC values and IMU every sample") + (bmsCells ? ", BMS every 20th." : "."));
   const save = setInterval(() => idbSet("live", logData(live)), 5000);
   let rateT = performance.now(), rateN = 0;
   while (live) {
     const t = performance.now();
     try {
-      const row = live.useRefloat ? await sampleRefloat(rf) : await sampleGeneric();
+      const vals = await sample(rf, live.n++);
       if (!live) break;
       live.failures = 0;
+      const row = [vals.time_s, ...live.columns.slice(1).map(c => vals[c] ?? null)];
       live.rows.push(row);
-      noteEvents(live, row);
+      noteEvents(live, vals);
       rateN++;
       if (t - rateT > 1000) { $("#r-rate").textContent = (rateN * 1000 / (t - rateT)).toFixed(0) + " Hz"; rateT = t; rateN = 0; }
-      showReadouts(row);
+      showReadouts(vals);
     } catch (e) {
       if (!live) break;
       live.failures++;
@@ -297,55 +316,108 @@ function stopLive() {
   if (data.rows.length) showLog(data);
 }
 
-async function sampleRefloat(rf) {
-  const p = await link.request([CUSTOM, PKG, 33, 1, ...u32(MASK1), ...u32(MASK2)], { match: pkgMatch(33), timeout: 800, tries: 1 });
+// One sample. Returns an object of column -> value.
+async function sample(rf, n) {
+  const o = {};
+  if (rf) {
+    Object.assign(o, await readRefloat(rf));
+    if (n % 5 === 0) Object.assign(o, await readValues());
+    if (n % 10 === 5) Object.assign(o, await readImu());
+  } else {
+    Object.assign(o, await readValues(), await readImu());
+    if (live.t0 === null) live.t0 = performance.now();
+    o.time_s = (performance.now() - live.t0) / 1000;
+  }
+  if (live.bms && n % 20 === 10) {
+    try { const b = await readBms(); Object.assign(o, b.cols); } catch (e) {}
+  }
+  return o;
+}
+
+async function readRefloat(rf) {
+  const p = await link.request([CUSTOM, PKG, 33, 1, ...u32(MASK1), ...u32(live.mask2)], { match: pkgMatch(33), timeout: 800, tries: 1 });
   const r = new Reader(p, 3); r.u8(); r.u32(); r.u32();
   const ticks = r.u32();
   if (live.t0 === null) live.t0 = ticks;
-  const t = ((ticks - live.t0) >>> 0) / (rf.tickRate || 10000);
-  r.u8(); // extra flags
+  const o = { time_s: ((ticks - live.t0) >>> 0) / (rf.tickRate || 10000) };
+  o.recording_active = r.u8() & 1;
   const sf = r.u32() >>> 0;
-  const row = [t, STATE[(sf >> 24) & 3], (sf >> 22) & 3, SAT[(sf >> 12) & 15] ?? String((sf >> 12) & 15), STOP[(sf >> 8) & 15] ?? String((sf >> 8) & 15), (sf >> 16) & 1];
-  for (const [, name] of RT1) { const v = r.f32auto(); row.push(PCT.has(name) ? v * 100 : v); }
-  for (const [, name] of RT2) row.push(r.f32auto());
-  row.beep = BEEP[sf & 255] || "";
-  return row;
+  Object.assign(o, { state: STATE[(sf >> 24) & 3], package_mode: MODE[(sf >> 28) & 3] ?? String((sf >> 28) & 3), footpad: (sf >> 22) & 3, charging: (sf >> 21) & 1,
+    fatal_error: (sf >> 20) & 1, darkride: (sf >> 17) & 1, wheelslip: (sf >> 16) & 1, pushback: SAT[(sf >> 12) & 15] ?? String((sf >> 12) & 15),
+    stop_reason: STOP[(sf >> 8) & 15] ?? String((sf >> 8) & 15), alert: BEEP[sf & 255] || "" });
+  for (const [, name] of RT1) { const v = r.f32auto(); o[name] = PCT.has(name) ? v * 100 : v; }
+  for (const [, name, enc] of live.rt2) {
+    if (enc === "u32") o[name] = r.u32();
+    else if (enc === "f64") { o[name] = new DataView(r.b.buffer, r.b.byteOffset + r.p, 8).getFloat64(0); r.p += 8; }
+    else o[name] = r.f32auto();
+  }
+  return o;
 }
 
-async function sampleGeneric() {
-  const v = new Reader(await link.request([50, ...u32(0x81CF)], { timeout: 800, tries: 1 }), 5);
-  const f = [v.i16() / 10, v.i16() / 10, v.i32() / 100, v.i32() / 100, v.i16() / 10, v.i32(), v.i16() / 10, FAULTS[v.u8()] || "UNKNOWN"];
-  const im = new Reader(await link.request([65, 0, 7], { timeout: 800, tries: 1 }), 3);
-  const imu = [im.f32auto(), im.f32auto(), im.f32auto()];
-  if (live.t0 === null) live.t0 = performance.now();
-  return [(performance.now() - live.t0) / 1000, ...f, ...imu];
+async function readValues() {
+  const v = new Reader(await link.request([50, ...u32(0x3FFFFF)], { timeout: 800, tries: 1 }), 5);
+  const c = VALUE_COLS, o = {};
+  const take = [() => v.i16() / 10, () => v.i16() / 10, () => v.i32() / 100, () => v.i32() / 100, () => v.i32() / 100, () => v.i32() / 100, () => v.i16() / 10, () => v.i32(),
+    () => v.i16() / 10, () => v.i32() / 1e4, () => v.i32() / 1e4, () => v.i32() / 1e4, () => v.i32() / 1e4, () => v.i32(), () => v.i32(), () => FAULTS[v.u8()] || "UNKNOWN"];
+  take.forEach((f, i) => o[c[i]] = f());
+  if (v.left() >= 4) o.vesc_position_deg = v.i32() / 1e6;
+  if (v.left() >= 1) o.vesc_can_id = v.u8();
+  if (v.left() >= 6) { o.vesc_mosfet1_temp_c = v.i16() / 10; o.vesc_mosfet2_temp_c = v.i16() / 10; o.vesc_mosfet3_temp_c = v.i16() / 10; }
+  if (v.left() >= 8) { o.vesc_vd_v = v.i32() / 1e3; o.vesc_vq_v = v.i32() / 1e3; }
+  if (v.left() >= 1) { const s = v.u8(); o.vesc_timeout = s & 1; o.vesc_kill_switch = (s >> 1) & 1; }
+  return o;
 }
 
-function noteEvents(L, row) {
-  const c = L.columns, get = n => row[c.indexOf(n)], t = row[0], prev = L.last;
-  if (L.useRefloat) {
-    const st = get("state"), pb = get("pushback"), ws = get("wheelslip");
-    if (prev.state === "Running" && st !== "Running") L.events.push({ t, kind: "stop", text: "Disengaged" + (get("stop_reason") ? ": " + get("stop_reason") : "") });
+async function readImu() {
+  const r = new Reader(await link.request([65, ...[0xF1FF >> 8, 0xF1FF & 255]], { timeout: 800, tries: 1 }), 3);
+  const o = {};
+  for (const name of IMU_COLS) o[name] = r.f32auto();
+  return o;
+}
+
+async function readBms() {
+  const r = new Reader(await link.request([96], { timeout: 800, tries: 1 }), 1);
+  const vt = r.i32() / 1e6; r.i32(); const ii = r.i32() / 1e6; r.i32(); r.i32(); r.i32();
+  const n = r.u8(), cells = [];
+  for (let i = 0; i < n; i++) cells.push(r.i16() / 1e3);
+  r.p += n;
+  const ns = r.u8(); const temps = []; for (let i = 0; i < ns; i++) temps.push(r.i16() / 100);
+  r.i16(); r.i16(); r.i16(); const tmax = r.i16() / 100;
+  const soc = r.left() >= 2 ? r.i16() / 10 : null;
+  const cols = { bms_v_total: vt, bms_current_a: ii, bms_soc_pct: soc, bms_temp_max_c: tmax };
+  if (n) { const mn = Math.min(...cells), mx = Math.max(...cells); Object.assign(cols, { bms_cell_min_v: mn, bms_cell_max_v: mx, bms_cell_diff_mv: Math.round((mx - mn) * 10000) / 10 }); }
+  cells.forEach((v, i) => cols[`bms_cell_${i + 1}_v`] = v);
+  return { cells, cols };
+}
+
+function noteEvents(L, o) {
+  const t = o.time_s, prev = L.last, now = { ...prev };
+  if ("state" in o) {
+    const st = o.state, pb = o.pushback, ws = o.wheelslip;
+    if (prev.state === "Running" && st !== "Running") L.events.push({ t, kind: "stop", text: "Disengaged" + (o.stop_reason ? ": " + o.stop_reason : "") });
     if (prev.state && prev.state !== "Running" && st === "Running") L.events.push({ t, kind: "info", text: "Engaged" });
     if (pb && pb !== prev.pb && pb !== "Centering") L.events.push({ t, kind: "pb", text: pb });
     if (ws && !prev.ws) L.events.push({ t, kind: "pb", text: "Wheel slip" });
-    if (row.beep && row.beep !== prev.beep) L.events.push({ t, kind: "pb", text: "Alert: " + row.beep });
-    L.last = { state: st, pb, ws, beep: row.beep };
-  } else {
-    const f = get("fault");
-    if (f !== "NONE" && f !== prev.f) L.events.push({ t, kind: "stop", text: "Fault: " + f });
-    L.last = { f };
+    if (o.alert && o.alert !== prev.alert) L.events.push({ t, kind: "pb", text: "Alert: " + o.alert });
+    if (o.fatal_error && !prev.fatal) L.events.push({ t, kind: "stop", text: "Fatal error reported by Refloat" });
+    if (prev.charging !== undefined && o.charging !== prev.charging) L.events.push({ t, kind: "info", text: o.charging ? "Charging started" : "Charging stopped" });
+    Object.assign(now, { state: st, pb, ws, alert: o.alert, fatal: o.fatal_error, charging: o.charging });
   }
+  if ("fault" in o) {
+    if (o.fault !== "NONE" && o.fault !== prev.fault) L.events.push({ t, kind: "stop", text: "Motor controller fault: " + o.fault });
+    now.fault = o.fault;
+  }
+  L.last = now;
 }
 
-function showReadouts(row) {
-  const c = live.columns, g = n => row[c.indexOf(n)];
-  const fmt = (v, d, u) => v == null || isNaN(v) ? "–" : v.toFixed(d) + u;
-  $("#r-speed").textContent = fmt(g("speed_kmh") ?? null, 1, " km/h");
-  $("#r-duty").textContent = fmt(g("duty_pct"), 0, "%");
-  $("#r-volt").textContent = fmt(g("battery_v"), 1, "V");
-  $("#r-amp").textContent = fmt(g("motor_current_a"), 0, "A");
-  $("#r-pitch").textContent = fmt(g("pitch_deg"), 1, "°");
+function showReadouts(o) {
+  const fmt = (v, d, u) => v == null || isNaN(v) ? null : v.toFixed(d) + u;
+  const set = (id, v) => { if (v != null) $(id).textContent = v; };
+  set("#r-speed", fmt(o.speed_kmh, 1, " km/h"));
+  set("#r-duty", fmt(o.duty_pct ?? o.vesc_duty_pct, 0, "%"));
+  set("#r-volt", fmt(o.battery_v ?? o.vesc_battery_v, 1, "V"));
+  set("#r-amp", fmt(o.motor_current_a ?? o.vesc_motor_current_a, 0, "A"));
+  set("#r-pitch", fmt(o.pitch_deg ?? o.imu_pitch_deg, 1, "°"));
   $("#r-count").textContent = live.rows.length;
 }
 
@@ -407,15 +479,20 @@ async function idbSet(k, v) { try { const db = await idb(); db.transaction("logs
 async function idbGet(k) { try { const db = await idb(); return await new Promise(res => { const q = db.transaction("logs").objectStore("logs").get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); } catch (e) { return null; } }
 
 // ---------- Charts ----------
+const NO_CHART = /^(footpad|wheelslip|charging|fatal_error|darkride|recording_active|vesc_timeout|vesc_kill_switch|vesc_can_id|gnss_lat|gnss_lon|gnss_last_update_ticks|quat_.|odometer_m|vesc_tachometer.*|vesc_position_deg)$/;
 const GROUPS = [
   ["Duty cycle (%)", /duty/],
   ["Speed (km/h)", /speed/],
   ["Motor speed (ERPM)", /erpm/],
   ["Current (A)", /current|amp(?!_hours)|_a$/],
-  ["Battery voltage (V)", /batt.*v$|battery_v|voltage/],
+  ["Battery voltage (V)", /battery_v|charging_v|bms_v_total/],
   ["Angles (°)", /pitch|roll|yaw|setpoint|_deg$/],
   ["Foot sensors (V)", /footpad|adc/],
   ["Temperature (°C)", /temp/],
+  ["Acceleration (g)", /^accel/],
+  ["Rotation rate (°/s)", /^gyro/],
+  ["BMS cells (V)", /^bms_cell_(\d+|min|max)_v$/],
+  ["Energy (Ah, Wh)", /amp_hours|watt_hours/],
 ];
 let plots = [], current = null;
 
@@ -430,7 +507,7 @@ function showLog(data) {
   plots = [];
   const charts = $("#charts"); charts.replaceChildren();
   const x = data.rows.map(r => r[0]);
-  const numeric = data.columns.map((c, i) => i > 0 && data.rows.some(r => typeof r[i] === "number" && c !== "footpad" && c !== "wheelslip"));
+  const numeric = data.columns.map((c, i) => i > 0 && !NO_CHART.test(c) && data.rows.some(r => typeof r[i] === "number"));
   const used = new Set();
   const css = getComputedStyle(document.documentElement), col = i => css.getPropertyValue(`--s${(i % 6) + 1}`).trim();
   const fg = css.getPropertyValue("--muted").trim(), grid = css.getPropertyValue("--line").trim();
@@ -447,7 +524,7 @@ function showLog(data) {
       width: width(), height: 170, cursor: { sync: { key: "log", setSeries: false }, drag: { x: true, y: false } },
       scales: { x: { time: false } },
       axes: [{ stroke: fg, grid: { stroke: grid }, ticks: { stroke: grid }, values: (u, v) => v.map(s => s.toFixed(1) + "s") }, { stroke: fg, grid: { stroke: grid }, ticks: { stroke: grid }, size: 56, values: (u, v) => v.map(n => Math.abs(n) >= 10000 ? (n / 1000).toFixed(0) + "k" : Math.abs(n) >= 1000 ? (n / 1000).toFixed(1) + "k" : +n.toFixed(2)) }],
-      series: [{ label: "Time", value: (u, v) => v == null ? "–" : v.toFixed(3) + " s" }, ...idx.map((i, k) => ({ label: data.columns[i], stroke: col(k), width: 1.4, value: (u, v) => v == null ? "–" : (+v.toFixed(3)).toString() }))],
+      series: [{ label: "Time", value: (u, v) => v == null ? "–" : v.toFixed(3) + " s" }, ...idx.map((i, k) => ({ label: data.columns[i], stroke: col(k), width: 1.4, spanGaps: true, value: (u, v) => v == null ? "–" : (+v.toFixed(3)).toString() }))],
       hooks: { setSelect: [u => { if (u.select.width > 4) zoomTo(u.posToVal(u.select.left, "x"), u.posToVal(u.select.left + u.select.width, "x")); u.setSelect({ width: 0 }, false); }] },
     };
     const plot = new uPlot(opts, [x, ...idx.map(i => data.rows.map(r => typeof r[i] === "number" ? r[i] : null))], box);

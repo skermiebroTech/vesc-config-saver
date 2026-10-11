@@ -16,7 +16,7 @@ The page only reads from the controller. It never changes settings.
 
 `logger.html` records ride data in two ways and shows it on synced charts with an event list (disengages and their reason, pushbacks, wheel slip, alerts), with CSV export:
 
-- **Live log** over Bluetooth, about 10–30 samples a second. With Refloat it uses Refloat's realtime data (speed, duty, currents, voltage, temperatures, pitch, roll, setpoints, foot sensors and package state). Without Refloat it uses the standard VESC values and IMU angles. The screen has to stay on, so the page keeps it awake.
+- **Live log** over Bluetooth, about 10–30 samples a second, logging everything the board offers. With Refloat: every Refloat realtime field on every sample (speed, duty, currents, voltage, temperatures, pitch, roll, every setpoint, foot sensors, remote input, distance, energy, charging, GPS if fitted, and the package state, pushback type, stop reason and alerts). VESC's own values (fault codes, FOC currents and voltages, each MOSFET temperature, tachometer) on every 5th sample, the raw IMU (accelerometer, gyro, orientation) on every 10th, and VESC BMS cell voltages on every 20th if a VESC BMS is present. Without Refloat, the VESC values and IMU on every sample. Motor controller faults show up as events. The screen has to stay on, so the page keeps it awake.
 - **Refloat's on-board data recording**: a few seconds at the full balance-loop rate, recorded inside the controller. Needs firmware with the recording buffer (Refloat Extras). Downloading it pauses the recording, as Refloat's own screen does; it restarts on the next engage.
 
 Live logs are saved in the browser every few seconds, so a log can be recovered if the page closes.
