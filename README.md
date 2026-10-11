@@ -6,7 +6,9 @@ A web page that connects to a VESC controller over Bluetooth, reads its full con
 - app config
 - every package config on every VESC device on the board's CAN bus: Refloat, Float, TNT (Trick and Trail), Balance and any other package that registers a config page, plus the VESC Express's own settings
 
-Passwords and PINs (such as a VESC Express's Wi-Fi password and Bluetooth PIN) are never saved. Their values are replaced with "(hidden)", and raw data isn't kept for any config page that contains them.
+Float Accessories (on a VESC Express) keeps its settings in its own storage rather than a config page, so the saver reads them the same way its own app screen does: it sends the package's read-only `(send-config)` request, the only message it ever sends to Float Accessories, and decodes the reply using `fa.js` (written against Float Accessories 3.1.2). All 87 settings are described in the viewer and compare pages.
+
+Passwords and PINs (such as a VESC Express's Wi-Fi password and Bluetooth PIN, and Float Accessories' BMS keys and counters and Pubmote pairing details) are never saved. Their values are replaced with "(hidden)", and raw data isn't kept for any config page that contains them.
 
 For each part the file holds the raw config data (the same bytes VESC Tool reads, base64-encoded) plus the decoded setting names and values. Package configs also include their own definition, so they can always be decoded later.
 

@@ -24,11 +24,13 @@ async function prepareConfig(cfg) {
   const tabs = [];
   for (const pkg of cfg.packages || []) {
     if (!pkg.values) continue;
+    const fa = pkg.source === "float-accessories";
     let def = null;
-    try { def = await packageDefs(pkg.definitionCompressed); } catch (e) {}
+    if (fa) def = window.FA_DEF || null;
+    else try { def = await packageDefs(pkg.definitionCompressed); } catch (e) {}
     const name = (pkg.name || "Package").replace(/ Cfg$/, "");
     // Section notes: Refloat's apply to Refloat and the Float family it grew from.
-    const kind = /express/i.test(pkg.device?.hw || "") && pkg.index === 0 ? "Express" : /refloat|^float$|^float /i.test(name) ? "Refloat" : name;
+    const kind = fa ? "Float Accessories" : /express/i.test(pkg.device?.hw || "") && pkg.index === 0 ? "Express" : /refloat|^float$|^float /i.test(name) ? "Refloat" : name;
     const onOther = pkg.device && pkg.device.hwType !== 0;
     const sameName = pkg.device && pkg.device.hw.toLowerCase().startsWith(name.toLowerCase());
     tabs.push({ id: kind, pkg: true, other: onOther, label: onOther && !sameName ? `${name} · ${pkg.device.hw}` : name, values: pkg.values, def, note: pkg.rawOmitted });

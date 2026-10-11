@@ -121,6 +121,7 @@ section.grp h3 { font: 700 1.2rem var(--display); margin: 10px 0 0; border-top: 
 
 <script src="core.js?v=3"></script>
 <script src="guide.js?v=3"></script>
+<script src="fa.js?v=1"></script>
 <script src="cfg.js?v=1"></script>
 <script>
 const $ = s => document.querySelector(s);
@@ -206,7 +207,7 @@ function update() {
   if (!ready) return;
   diff = buildDiff();
   const total = diff.reduce((n, t) => n + t.diffs, 0);
-  $("#headline").textContent = total ? `${total} setting${total === 1 ? "" : "s"} differ` : "No differences";
+  $("#headline").textContent = total ? (total === 1 ? "1 setting differs" : `${total} settings differ`) : "No differences";
   if (!diff.find(t => t.label === tabKey)) tabKey = (diff.find(t => t.diffs) || diff[0]).label;
   $("#summary").replaceChildren(...diff.map(t => el("button", { type: "button", className: "chip", onclick: () => { tabKey = t.label; render(); } },
     t.label, el("b", { textContent: t.onlyIn ? `only ${t.onlyIn}` : String(t.diffs) }))));

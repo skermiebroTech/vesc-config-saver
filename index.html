@@ -100,6 +100,7 @@ summary:focus-visible, .foot a:focus-visible { outline: 3px solid var(--accent);
 
 <script src="core.js?v=3"></script>
 <script src="ble.js?v=1"></script>
+<script src="fa.js?v=1"></script>
 <script>
 const $ = s => document.querySelector(s);
 const logEl = $("#log");
@@ -155,7 +156,6 @@ async function run() {
     out.packages = [];
     const SECRET = /(^|[_.])(key|pass|password|pin|secret|token)$/i;
     const total = devices.reduce((n, d) => n + (d.info.customConfigs || 0), 0);
-    if (!total) step("pkg", "skip", "no package config found");
     for (const d of devices) {
       link.target = d.canId;
       for (let ci = 0; ci < (d.info.customConfigs || 0); ci++) {
@@ -193,7 +193,20 @@ async function run() {
         } catch (e) { log(`Could not read config ${ci} from ${d.info.hw}: ${e.message}`, "err"); }
       }
     }
-    if (total) step("pkg", "ok", out.packages.map(p => p.name || "config").join(", "));
+    // Float Accessories on a VESC Express keeps its settings in its own storage, not a config page.
+    // Ask it the same read-only way its own screen does: run its (send-config) function, which only sends the settings back.
+    for (const d of devices.filter(d => d.info.hwType === 2)) {
+      link.target = d.canId;
+      try {
+        const reply = await link.request(FA_READ, { match: x => x[0] === 36 && new TextDecoder().decode(x.slice(1, 10)) === "settings ", timeout: 2000, tries: 2 });
+        const values = faParseSettings(new TextDecoder().decode(reply.slice(1)));
+        out.packages.push({ source: "float-accessories", name: "Float Accessories", device: { hw: d.info.hw, firmware: fwVersion(d.info), hwType: d.info.hwType, canId: d.canId }, values,
+          rawOmitted: "Float Accessories keeps its settings in its own storage, so they're saved as readable values only. BMS keys and counters and Pubmote pairing details are hidden." });
+        log(`Read Float Accessories settings from ${d.info.hw} (BMS keys and Pubmote pairing hidden)`);
+      } catch (e) { log(`${d.info.hw}: no Float Accessories found`); }
+    }
+    if (out.packages.length) step("pkg", "ok", out.packages.map(p => p.name || "config").join(", "));
+    else step("pkg", "skip", "no package config found");
     link.target = ctrl.canId;
     await link.disconnect();
 
