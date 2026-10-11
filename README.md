@@ -21,6 +21,10 @@ The page only reads from the controller. It never changes settings.
 
 Live logs are saved in the browser every few seconds, so a log can be recovered if the page closes.
 
+## Compare configs
+
+`compare.html` opens two saved configs and lists every setting that differs, page by page and section by section, with both values, the change (with direction and percentage), and the beginner note for each setting. It can also compare one config against the default values, show settings that are the same, search, swap the two configs, and download the differences as CSV. Configs from different firmware versions are matched by setting name. Passwords and PINs are never compared since they're never saved.
+
 ## Config viewer
 
 `viewer.html` shows a card for every setting: its value, a plain-language note on what it means, a practical tip, and whether it has been changed from the default. Settings are grouped the same way as in VESC Tool, with search and a filter for changed settings. Sections a balance board doesn't use (BLDC, DC, PPM, PAS and so on) are hidden unless you ask for them.

@@ -30,6 +30,7 @@
   --accent: #3cc79c; --accent-fg: #06130f; --accent-soft: #163a2f; --warn: #f0a050; --warn-soft: #3a2a14; --bad: #ff8a80;
   --s1: #3cc79c; --s2: #fb923c; --s3: #60a5fa; --s4: #c084fc; --s5: #fbbf24; --s6: #22d3ee; color-scheme: dark }
 * { box-sizing: border-box }
+[hidden] { display: none !important }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--body); padding: 0 16px env(safe-area-inset-bottom, 0px) }
 .wrap { max-width: 34rem; margin: 0 auto; padding-block: calc(env(safe-area-inset-top, 0px) + 22px) 48px; display: grid; gap: 18px }
 .wide { max-width: 96rem; margin: 0 auto; padding-bottom: 48px; display: grid; gap: 14px }
@@ -87,7 +88,7 @@ details.log summary { cursor: pointer; color: var(--muted); font-size: .9rem }
   <header>
     <h1>VESC Logger</h1>
     <p class="sub">Log ride data from your board over Bluetooth, or download Refloat's on-board data recording. See it on synced charts and export it as CSV.</p>
-    <div class="links"><a href="./">Config saver</a><a href="viewer.html">Config viewer</a><a href="https://github.com/skermiebroTech/vesc-config-saver">GitHub</a></div>
+    <div class="links"><a href="./">Config saver</a><a href="viewer.html">Config viewer</a><a href="compare.html">Compare configs</a><a href="https://github.com/skermiebroTech/vesc-config-saver">GitHub</a></div>
   </header>
 
   <section class="card">

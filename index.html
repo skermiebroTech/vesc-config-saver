@@ -26,6 +26,7 @@
   --bg: #0f1513; --surface: #17201d; --fg: #e4ece8; --muted: #93a39c; --line: #2a3632;
   --accent: #3cc79c; --accent-fg: #06130f; --warn: #f0a050; --bad: #ff8a80; color-scheme: dark }
 * { box-sizing: border-box }
+[hidden] { display: none !important }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--body);
   padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px) }
 main { max-width: 34rem; margin: 0 auto; padding-block: 24px 48px; display: grid; gap: 20px }
@@ -92,6 +93,7 @@ summary:focus-visible, .foot a:focus-visible { outline: 3px solid var(--accent);
   <footer class="foot">
     <a href="viewer.html">Config viewer</a>
     <a href="logger.html">Ride logger</a>
+    <a href="compare.html">Compare configs</a>
     <a href="https://github.com/skermiebroTech/vesc-config-saver">Source code on GitHub</a>
   </footer>
 </main>
