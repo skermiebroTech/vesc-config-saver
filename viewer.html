@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VESC Config Explainer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky header with tabs and search, then sections of setting cards in a single readable column. */
+:root {
+  --bg: #f3f5f4; --surface: #ffffff; --fg: #17201d; --muted: #5d6a65; --line: #d5ddd9;
+  --accent: #0d7c5f; --accent-fg: #ffffff; --accent-soft: #e2f2ec; --warn: #8a4a00; --warn-soft: #fbefdc;
+  --display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1513; --surface: #17201d; --fg: #e4ece8; --muted: #93a39c; --line: #2a3632;
+  --accent: #3cc79c; --accent-fg: #06130f; --accent-soft: #163a2f; --warn: #f0a050; --warn-soft: #3a2a14; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1513; --surface: #17201d; --fg: #e4ece8; --muted: #93a39c; --line: #2a3632;
+  --accent: #3cc79c; --accent-fg: #06130f; --accent-soft: #163a2f; --warn: #f0a050; --warn-soft: #3a2a14; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); padding: 0 16px env(safe-area-inset-bottom, 0px) }
+.wrap { max-width: 46rem; margin: 0 auto }
+header.top { background: var(--bg); padding-top: calc(env(safe-area-inset-top, 0px) + 14px); padding-bottom: 10px; border-bottom: 1px solid var(--line); display: grid; gap: 10px }
+.titlerow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap }
+h1 { font: 700 1.7rem/1.1 var(--display); margin: 0; letter-spacing: .01em }
+.titlerow a { color: var(--accent); font-size: .9rem }
+.meta { color: var(--muted); font-size: .85rem; margin: 0; font-variant-numeric: tabular-nums }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap }
+.tabs button { font: 700 1rem var(--display); letter-spacing: .03em; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 6px 14px; cursor: pointer }
+.tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+.tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
+input[type="search"] { flex: 1 1 14rem; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg) }
+label.chk { display: flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted) }
+button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
+
+main { padding-block: 16px 48px; display: grid; gap: 14px }
+.empty { display: grid; gap: 14px; padding-block: 28px }
+.empty h2 { font: 700 1.4rem var(--display); margin: 0 }
+.empty p { margin: 0; color: var(--muted); max-width: 60ch }
+.btn { font: 700 1.05rem var(--display); letter-spacing: .03em; border: 0; border-radius: 10px; padding: 13px 16px; background: var(--accent); color: var(--accent-fg); cursor: pointer; text-align: center }
+.btn.alt { background: var(--surface); color: var(--fg); border: 1px solid var(--line) }
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap }
+.drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center; color: var(--muted) }
+.drop.over { border-color: var(--accent); color: var(--fg) }
+
+details.section { border-top: 1px solid var(--line); padding-top: 8px }
+details.section > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding-block: 6px }
+details.section > summary::-webkit-details-marker { display: none }
+details.section > summary h2 { font: 700 1.35rem var(--display); margin: 0 }
+details.section > summary .count { color: var(--muted); font-size: .85rem; white-space: nowrap }
+details.section > summary::after { content: "▾"; color: var(--muted) }
+details.section:not([open]) > summary::after { content: "▸" }
+.secnote { margin: 4px 0 12px; color: var(--muted); max-width: 62ch }
+h3 { font: 700 .8rem var(--display); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 18px 0 8px }
+h4 { font: 600 .95rem var(--body); margin: 14px 0 6px; color: var(--fg) }
+.cards { display: grid; gap: 10px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 8px; min-width: 0 }
+.card.changed { border-left: 4px solid var(--warn) }
+.chead { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap }
+.cname { font-weight: 600; min-width: 0 }
+.cval { font: 500 1.05rem var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; font-size: .78rem }
+.badge { padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn) }
+.badge.def { background: transparent; color: var(--muted); border: 1px solid var(--line) }
+.what { margin: 0 }
+.tip { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); font-size: .93rem }
+.tip b { font-weight: 600 }
+details.more summary { cursor: pointer; color: var(--muted); font-size: .85rem }
+details.more p { margin: 6px 0 0; font-size: .9rem; color: var(--muted); white-space: pre-line }
+.key { font: .75rem var(--mono); color: var(--muted); word-break: break-all }
+.none { color: var(--muted); padding-block: 20px }
+@media (prefers-reduced-motion: no-preference) { .card { transition: border-color .15s } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="titlerow"><h1>VESC Config Explainer</h1><a href="./">Save a config from your board</a></div>
+    <p class="meta" id="meta">Open a file saved with VESC Config Saver to see every setting explained.</p>
+    <div class="tabs" id="tabs" hidden></div>
+    <div class="tools" id="tools" hidden>
+      <input type="search" id="q" placeholder="Search settings, e.g. duty, brake, battery" aria-label="Search settings">
+      <label class="chk"><input type="checkbox" id="changed"> Only changed from default</label>
+      <label class="chk"><input type="checkbox" id="unused"> Show unused sections</label>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="empty" id="empty">
+      <h2>Open your config</h2>
+      <p>Each setting from your board gets a card with its value, what it means in plain language, and whether you've changed it from the default.</p>
+      <div class="btnrow">
+        <button class="btn" type="button" id="pick">Choose a config file</button>
+        <button class="btn alt" type="button" id="last" hidden>Open the config you just saved</button>
+      </div>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+      <div class="drop" id="drop">Or drop a .json file here</div>
+      <p id="err" class="secnote" role="alert"></p>
+    </div>
+  </main>
+</div>
+
+<script src="guide.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(k => k != null && k !== "")); return e; };
+const UNUSED = new Set(["Motor/BLDC", "Motor/DC", "Motor/PID Controllers", "App/PPM", "App/ADC", "App/NRF", "App/PAS", "App/VESC Remote", "Refloat/Internal"]);
+
+let state = { cfg: null, tabs: [], tab: null };
+
+// ---- Loading ----
+try { if (localStorage.getItem("vcs:last")) $("#last").hidden = false; } catch (e) {}
+$("#pick").onclick = () => $("#file").click();
+$("#file").onchange = e => e.target.files[0] && readFile(e.target.files[0]);
+$("#last").onclick = () => { Promise.resolve().then(() => load(JSON.parse(localStorage.getItem("vcs:last")))).catch(e => showErr("Couldn't open the saved config: " + e.message)); };
+const drop = $("#drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]); };
+function readFile(f) { f.text().then(t => load(JSON.parse(t))).catch(e => showErr("That file couldn't be read as a VESC Config Saver export: " + e.message)); }
+function showErr(m) { $("#err").textContent = m; }
+
+async function load(cfg) {
+  if (!cfg || !cfg.firmware) throw new Error("missing firmware info");
+  const fw = cfg.firmware, ver = `${fw.major}.${String(fw.minor).padStart(2, "0")}`;
+  let desc = null;
+  try { desc = await (await fetch(`desc/${ver}.json`)).json(); } catch (e) { desc = null; }
+  const tabs = [];
+  for (const pkg of cfg.packages || []) {
+    if (!pkg.values) continue;
+    let def = null;
+    try { def = await packageDefs(pkg.definitionCompressed); } catch (e) {}
+    tabs.push({ id: "Refloat", label: (pkg.name || "Package").replace(/ Cfg$/, ""), values: pkg.values, def });
+  }
+  if (cfg.mcconf?.values) tabs.push({ id: "Motor", label: "Motor", values: cfg.mcconf.values, def: desc?.mcconf });
+  if (cfg.appconf?.values) tabs.push({ id: "App", label: "App", values: cfg.appconf.values, def: desc?.appconf });
+  if (!tabs.length) throw new Error("no decoded settings in this file");
+  state = { cfg, tabs, tab: tabs[0] };
+  $("#meta").textContent = `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
+  $("#tabs").replaceChildren(...tabs.map(t => el("button", { type: "button", textContent: t.label, onclick: () => { state.tab = t; render(); } })));
+  $("#tabs").hidden = $("#tools").hidden = false;
+  render();
+}
+
+// Package definitions travel inside the saved file (qCompress: 4-byte length + zlib).
+async function packageDefs(b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const xml = await new Response(new Blob([bytes.slice(4)]).stream().pipeThrough(new DecompressionStream("deflate"))).text();
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  const txt = (n, t) => n.getElementsByTagName(t)[0]?.textContent ?? null;
+  const p = {};
+  for (const n of doc.getElementsByTagName("Params")[0].children) {
+    const e = { n: txt(n, "longName"), d: htmlToText(txt(n, "description")) };
+    const s = txt(n, "suffix"); if (s) e.s = s;
+    const sc = +txt(n, "editorScale"); if (sc && sc !== 1) e.sc = sc;
+    if (txt(n, "editAsPercentage") === "1") e.pct = 1;
+    const dec = txt(n, "editorDecimalsDouble"); if (dec) e.dec = +dec;
+    const en = Array.from(n.getElementsByTagName("enumNames"), x => x.textContent); if (en.length) e.o = en;
+    const dv = txt(n, "valDouble") ?? txt(n, "valInt") ?? txt(n, "valString"); if (dv != null) e.def = dv;
+    p[n.tagName] = e;
+  }
+  const g = Array.from(doc.getElementsByTagName("Grouping")[0].children).map(gr => ({
+    n: txt(gr, "groupName"),
+    subs: Array.from(gr.getElementsByTagName("subgroup")).map(sg => ({ n: txt(sg, "subgroupName"), p: Array.from(sg.getElementsByTagName("param")).map(x => x.textContent) }))
+  }));
+  return { p, g };
+}
+function htmlToText(h) {
+  if (!h) return "";
+  const d = new DOMParser().parseFromString(h, "text/html");
+  const ps = d.querySelectorAll("p, li");
+  return (ps.length ? Array.from(ps, x => x.textContent.trim()).join("\n") : d.body.textContent).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// ---- Values ----
+function fmt(v, d) {
+  if (typeof v.value === "boolean") return v.value ? "On" : "Off";
+  if (v.option) return pretty(v.option);
+  if (typeof v.value !== "number") return String(v.value);
+  let x = v.value, suf = d?.s || "";
+  if (d?.sc) x *= d.sc;
+  if (d?.pct) { x *= 100; if (!suf.includes("%")) suf = " %"; }
+  const dec = d?.dec ?? (Number.isInteger(x) ? 0 : 3);
+  return (+x.toFixed(Math.min(dec, 6))).toLocaleString(undefined, { maximumFractionDigits: dec }) + suf;
+}
+function pretty(o) { return o.replace(/^FOC_OBSERVER_|^FOC_CC_DECOUPLING_|^BATTERY_TYPE_|^FOC_SENSOR_MODE_/, "").replace(/_/g, " "); }
+function isChanged(v, d) {
+  if (!d || d.def == null) return false;
+  const def = d.def;
+  if (typeof v.value === "boolean") return v.value !== (def === "1" || def === "true");
+  if (typeof v.value === "number") { const n = +def; if (isNaN(n)) return false; return Math.abs(v.value - n) > Math.max(1e-6, Math.abs(n) * 1e-4); }
+  return String(v.value) !== def;
+}
+function fmtDefault(v, d) {
+  if (typeof v.value === "boolean") return (d.def === "1" || d.def === "true") ? "On" : "Off";
+  if (v.option !== undefined && d.o) return pretty(d.o[+d.def] ?? d.def);
+  if (typeof v.value === "number" && !isNaN(+d.def)) return fmt({ value: +d.def }, d);
+  return d.def;
+}
+
+// ---- Rendering ----
+function render() {
+  const { tab } = state;
+  for (const b of $("#tabs").children) b.setAttribute("aria-pressed", b.textContent === tab.label);
+  const q = $("#q").value.trim().toLowerCase(), onlyChanged = $("#changed").checked, showUnused = $("#unused").checked || !!q;
+  const seen = new Set(), sections = [];
+  let groups = tab.def?.g?.length ? tab.def.g : [{ n: "All settings", subs: [{ n: "", p: Object.keys(tab.values) }] }];
+  // Packages put everything under one "General" group; show each of its subgroups as its own section.
+  if (tab.id === "Refloat") groups = groups.flatMap(gr => gr.n === "General" ? gr.subs.map(s => ({ n: s.n, subs: [s] })) : [gr]);
+  for (const g of groups) {
+    const key = `${tab.id}/${g.n}`;
+    if (UNUSED.has(key) && !showUnused) continue;
+    const body = [];
+    let count = 0;
+    for (const sg of g.subs) {
+      const items = [];
+      let sep = null;
+      for (const name of sg.p) {
+        if (name.startsWith("::sep::")) { sep = name.slice(7).trim(); continue; }
+        const v = tab.values[name];
+        if (!v) continue;
+        seen.add(name);
+        const card = makeCard(name, v, tab.def?.p?.[name], q, onlyChanged);
+        if (!card) continue;
+        if (sep) { items.push(el("h4", { textContent: sep })); sep = null; }
+        items.push(card); count++;
+      }
+      if (items.length) body.push(sg.n && sg.n !== g.n ? el("h3", { textContent: sg.n }) : null, el("div", { className: "cards" }, ...items));
+    }
+    if (!count) continue;
+    const note = GUIDE_SECTIONS[key];
+    const sec = el("details", { className: "section", open: !UNUSED.has(key) || !!q },
+      el("summary", {}, el("h2", { textContent: g.n }), el("span", { className: "count", textContent: `${count} setting${count === 1 ? "" : "s"}` })),
+      note ? el("p", { className: "secnote", textContent: note }) : null, ...body.filter(Boolean));
+    sections.push(sec);
+  }
+  // Anything not listed in the groups.
+  const rest = Object.keys(tab.values).filter(n => !seen.has(n)).map(n => makeCard(n, tab.values[n], tab.def?.p?.[n], q, onlyChanged)).filter(Boolean);
+  if (rest.length && (showUnused || q)) sections.push(el("details", { className: "section", open: true }, el("summary", {}, el("h2", { textContent: "Other" }), el("span", { className: "count", textContent: `${rest.length}` })), el("div", { className: "cards" }, ...rest)));
+  $("#main").replaceChildren(...(sections.length ? sections : [el("p", { className: "none", textContent: q ? `No settings match "${q}".` : "Nothing to show with these filters." })]));
+}
+
+function makeCard(name, v, d, q, onlyChanged) {
+  const g = GUIDE[name];
+  const title = d?.n || v.name || name;
+  const changed = isChanged(v, d);
+  if (onlyChanged && !changed) return null;
+  if (q && ![title, name, g?.w, g?.t, d?.d].some(s => s && s.toLowerCase().includes(q))) return null;
+  const badges = [];
+  if (changed) badges.push(el("span", { className: "badge", textContent: "Changed" }), el("span", { className: "badge def", textContent: "Default: " + fmtDefault(v, d) }));
+  const official = d?.d && d.d !== g?.w ? d.d : "";
+  return el("article", { className: "card" + (changed ? " changed" : "") },
+    el("div", { className: "chead" }, el("span", { className: "cname", textContent: title }), el("span", { className: "cval", textContent: fmt(v, d) })),
+    badges.length ? el("div", { className: "badges" }, ...badges) : null,
+    g?.w ? el("p", { className: "what", textContent: g.w }) : official ? el("p", { className: "what", textContent: official.split("\n")[0] }) : el("p", { className: "what", textContent: "No description is available for this setting." }),
+    g?.t ? el("p", { className: "tip" }, el("b", { textContent: "Tip: " }), g.t) : null,
+    official && g?.w ? el("details", { className: "more" }, el("summary", { textContent: "VESC Tool description" }), el("p", { textContent: official })) :
+      official && official.includes("\n") ? el("details", { className: "more" }, el("summary", { textContent: "More detail" }), el("p", { textContent: official.split("\n").slice(1).join("\n").trim() })) : null,
+    el("span", { className: "key", textContent: name }));
+}
+
+for (const id of ["#q", "#changed", "#unused"]) $(id).addEventListener("input", () => state.cfg && render());
+</script>
+</body>
+</html>

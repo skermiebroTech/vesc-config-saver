@@ -10,6 +10,12 @@ For each part the file holds the raw config data (the same bytes VESC Tool reads
 
 The page only reads from the controller. It never changes settings.
 
+## Config explainer
+
+`viewer.html` opens a saved file and shows a card for every setting: its value, what it means in plain language, a practical tip for the important ones, and whether it has been changed from the default. Settings are grouped the same way as in VESC Tool, with search and a filter for changed settings. Sections a balance board doesn't use (BLDC, DC, PPM, PAS and so on) are hidden unless you ask for them.
+
+The plain-language notes are in `guide.js`. Official descriptions and defaults come from VESC Tool's parameter files (`desc/`) and, for Refloat, from the definition saved inside each export.
+
 ## Use
 
 Open the GitHub Pages site in Chrome on Android (Web Bluetooth needs Chrome and https).
