@@ -46,8 +46,6 @@ dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; f
 dt { color: var(--muted); min-width: 0 } dd { margin: 0; font-family: var(--mono); text-align: right }
 #log { font: .78rem/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 14rem; overflow: auto; margin: 0 }
 .err { color: var(--bad) }
-.btn2 { display: block; text-align: center; font: 700 1.05rem var(--display); letter-spacing: .03em; padding: 13px; border-radius: 10px; border: 1px solid var(--accent); color: var(--accent); text-decoration: none }
-.btn2:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px }
 p.small { font-size: .85rem; color: var(--muted); margin: 0 }
 </style>
 </head>
@@ -55,12 +53,11 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
 <main>
   <header>
     <h1>VESC Config Saver</h1>
-    <p class="sub">Reads the motor, app and Refloat settings from your controller over Bluetooth and saves them together in one file. Already have a file? <a href="viewer.html">Open the explainer</a>.</p>
+    <p class="sub">Reads the motor, app and Refloat settings from your controller over Bluetooth, then opens them in the config viewer, where you can download them as one file. Already have a file? <a href="viewer.html">Open the config viewer</a>.</p>
   </header>
 
-  <button id="go" type="button">Connect and save config</button>
+  <button id="go" type="button">Connect and read config</button>
   <p class="small" id="support"></p>
-  <a class="btn2" id="explain" href="viewer.html" hidden>Explain these settings</a>
 
   <ul class="steps" id="steps">
     <li data-k="conn"><span class="dot"></span><span>Connect to controller <span class="note"></span></span></li>
@@ -68,20 +65,15 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
     <li data-k="mc"><span class="dot"></span><span>Read motor config <span class="note"></span></span></li>
     <li data-k="app"><span class="dot"></span><span>Read app config <span class="note"></span></span></li>
     <li data-k="pkg"><span class="dot"></span><span>Read Refloat / package config <span class="note"></span></span></li>
-    <li data-k="save"><span class="dot"></span><span>Save file <span class="note"></span></span></li>
+    <li data-k="save"><span class="dot"></span><span>Open config viewer <span class="note"></span></span></li>
   </ul>
-
-  <section id="summary" hidden>
-    <h2>Key values read</h2>
-    <dl id="kv"></dl>
-  </section>
 
   <section>
     <h2>Log</h2>
     <pre id="log">Waiting. Turn the board on, close VESC Tool on this phone (only one app can connect at a time), then tap the button.</pre>
   </section>
 
-  <p class="small">Read-only: this page never writes anything to the controller. The file includes the raw config data, so it could be restored later with a tool that can write it back.</p>
+  <p class="small">Read-only: this page never writes anything to the controller. The downloaded file includes the raw config data, so it could be restored later with a tool that can write it back.</p>
 </main>
 
 <script>
@@ -339,14 +331,13 @@ async function run() {
     await dev.gatt.disconnect();
 
     step("save", "run");
-    const name = `vesc-config-${(info.hw || "vesc").replace(/\W+/g, "_")}-${out.exportedAt.slice(0, 19).replace(/[:T]/g, "-")}.json`;
-    const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
-    document.body.append(a); a.click(); a.remove();
-    step("save", "ok", name); log("Saved " + name + ". Check your Downloads folder.");
-    try { localStorage.setItem("vcs:last", JSON.stringify(out)); } catch (e) {}
-    $("#explain").hidden = false;
-    showSummary(out);
+    // Hand the config to the viewer: localStorage, with window.name as a fallback when storage is blocked.
+    const json = JSON.stringify(out);
+    let stored = false;
+    try { localStorage.setItem("vcs:last", json); stored = true; } catch (e) {}
+    if (!stored) window.name = "vcs:" + json;
+    step("save", "ok"); log("Config read. Opening the config viewer...");
+    location.href = "viewer.html#last";
   } catch (e) {
     const k = [...document.querySelectorAll("#steps li")].find(li => li.dataset.s === "run");
     if (k) step(k.dataset.k, "err", e.message);
@@ -354,20 +345,6 @@ async function run() {
   } finally { $("#go").disabled = false; }
 }
 
-function showSummary(out) {
-  const mc = out.mcconf?.values || {}, rows = [];
-  const add = (label, v, unit = "") => { if (v !== undefined) rows.push([label, (typeof v === "number" ? +v.toFixed(3) : v) + unit]); };
-  add("Battery current max", mc.l_in_current_max?.value, " A");
-  add("Battery current regen", mc.l_in_current_min?.value, " A");
-  add("Motor current max", mc.l_current_max?.value, " A");
-  add("Field weakening max", mc.foc_fw_current_max?.value, " A");
-  add("FW duty start", mc.foc_fw_duty_start?.value != null ? mc.foc_fw_duty_start.value * 100 : undefined, " %");
-  add("Max duty", mc.l_max_duty?.value != null ? mc.l_max_duty.value * 100 : undefined, " %");
-  add("Overmodulation", mc.foc_overmod_factor?.value);
-  for (const p of out.packages || []) add("Package", p.name);
-  $("#kv").replaceChildren(...rows.flatMap(([a, b]) => [Object.assign(document.createElement("dt"), { textContent: a }), Object.assign(document.createElement("dd"), { textContent: b })]));
-  $("#summary").hidden = !rows.length;
-}
 $("#go").addEventListener("click", run);
 </script>
 </body>

@@ -232,3 +232,367 @@ window.GUIDE_SECTIONS = {
   "Refloat/Specs": "Hardware details: voltage pushback points, foot sensors and LED wiring.",
   "Refloat/BMS": "Battery monitoring through your BMS.",
 };
+// Beginner notes, part 2: app config and motor info settings.
+(() => {
+const NU = "Not used on a balance board running Refloat. ";
+const ramp = (dir) => ({ w: `How many seconds the input takes to ramp ${dir}. It smooths sudden throttle changes.`, t: NU + "Only matters if you control the motor with this input." });
+const expo = { w: "Shapes the throttle response curve. 0 is linear; negative is gentle near zero and stronger at the top; positive is the opposite.", t: NU + "Only affects throttle-style inputs." };
+const expoMode = { w: "Which formula shapes the throttle curve (exponential, natural or polynomial).", t: NU + "Only affects throttle-style inputs." };
+const multi = { w: "Sends the same commands to other VESCs on the CAN bus, for vehicles with more than one motor.", t: NU + "A one-wheel board has a single motor controller." };
+const tc = { w: "Traction control between several motors: reduces power to a wheel that spins faster than the others.", t: NU + "Needs more than one motor." };
+const tcDiff = { w: "How big the speed difference between motors must be before traction control fully cuts the faster one.", t: NU };
+const coast = { w: "How much braking is applied automatically when you let go of the throttle, as a fraction of full brake current.", t: NU };
+const coastRamp = { w: "How long the automatic coasting brake takes to reach full strength.", t: NU };
+const safe = { w: "Stops the motor from starting unless the throttle has been at zero first, for example after power-up or a fault.", t: NU + "A safety feature for throttle-controlled vehicles." };
+const ctrl = (src) => ({ w: `How the ${src} input controls the motor: off, current (torque), duty cycle (speed-like), or PID speed control, with various reverse and brake options.`, t: NU + "Should be Off, since Refloat controls the motor." });
+const hyst = { w: "A dead zone around the input's rest position, so tiny movements are ignored.", t: NU };
+const smartRevDuty = { w: "Top duty cycle used when smart reverse drives the vehicle backwards.", t: NU };
+const smartRevRamp = { w: "How long smart reverse takes to reach its top duty cycle.", t: NU };
+const nrfAddr = { w: "One byte of the wireless address used to pair an NRF remote.", t: NU };
+const canRate = (n) => ({ w: `How many times per second the controller broadcasts status message group ${n} on the CAN bus. Other devices, like a VESC Express or a display, read these.`, t: "Leave at default unless a connected device or setup guide asks for something else." });
+const canMsgs = (n) => ({ w: `Which status messages (speed, current, temperatures, voltage and so on) are sent at CAN rate ${n}.`, t: "Leave at default unless a connected device needs specific messages." });
+const lp = (axis) => ({ w: `Smooths the accelerometer's ${axis} axis reading by filtering out vibration above this frequency. 0 turns the filter off.`, t: "Refloat has its own angle filtering. Leave at default unless a tuning guide says otherwise." });
+const aoff = (axis) => ({ w: `Calibration offset for the accelerometer's ${axis} axis, set when the IMU is calibrated.`, t: "Set by the calibration process. Don't type values in by hand." });
+const goff = (axis) => ({ w: `Calibration offset (drift correction) for the gyro's ${axis} axis.`, t: "Set by calibration. If the board's level drifts, recalibrate rather than editing this." });
+const adcV = (what, n) => ({ w: `The voltage on ADC${n} that counts as the ${what} of the throttle range.`, t: NU + "Refloat reads the foot sensors itself; its foot-sensor thresholds are in the Refloat Specs section." });
+
+Object.assign(window.GUIDE, {
+  // ADC app
+  "app_adc_conf.ctrl_type": ctrl("ADC (analog throttle)"),
+  "app_adc_conf.use_filter": { w: "Smooths the analog input to remove electrical noise, at the cost of a tiny delay.", t: NU },
+  "app_adc_conf.safe_start": safe,
+  "app_adc_conf.update_rate_hz": { w: "How many times per second the analog input is read.", t: NU },
+  "app_adc_conf.ramp_time_pos": ramp("up"), "app_adc_conf.ramp_time_neg": ramp("back down"),
+  "app_adc_conf.buttons": { w: "Turns on cruise control and reverse buttons for the analog throttle app, and sets whether they're inverted.", t: NU },
+  "app_adc_conf.multi_esc": multi, "app_adc_conf.tc": tc, "app_adc_conf.tc_max_diff": tcDiff,
+  "app_adc_conf.coast_brake_level": coast, "app_adc_conf.coast_brake_ramp_time": coastRamp,
+  "app_adc_conf.hyst": hyst,
+  "app_adc_conf.voltage_start": adcV("start", 1), "app_adc_conf.voltage_end": adcV("end", 1), "app_adc_conf.voltage_center": adcV("centre", 1),
+  "app_adc_conf.voltage_inverted": { w: "Flips the ADC1 input, so high voltage means low throttle.", t: NU },
+  "app_adc_conf.voltage_min": { w: "Lowest valid voltage on ADC1. Below this the input is treated as faulty and the motor stops.", t: NU },
+  "app_adc_conf.voltage_max": { w: "Highest valid voltage on ADC1. Above this the input is treated as faulty and the motor stops.", t: NU },
+  "app_adc_conf.voltage2_start": adcV("start", 2), "app_adc_conf.voltage2_end": adcV("end", 2),
+  "app_adc_conf.voltage2_inverted": { w: "Flips the ADC2 input.", t: NU },
+  "app_adc_conf.throttle_exp": expo, "app_adc_conf.throttle_exp_brake": { ...expo, w: "Shapes the brake response curve. 0 is linear." }, "app_adc_conf.throttle_exp_mode": expoMode,
+
+  // General
+  timeout_msec: { w: "If the controller gets no input for this long, it switches the motor off. This is a safety net if a remote or input disconnects.", t: "Refloat manages its own control loop. Leave at default." },
+  timeout_brake_current: { w: "Braking current applied after an input timeout.", t: "Leave at default." },
+  pairing_done: { w: "When on, only phones or computers that have been paired with this controller can connect over Bluetooth.", t: "A simple way to stop other people connecting to your board." },
+  permanent_uart_enabled: { w: "Turns on the always-on serial port some controllers have for a Bluetooth module.", t: "Turn off only if you want to block Bluetooth access through that port." },
+  can_mode: { w: "Which protocol the CAN bus uses. VESC mode lets VESC Tool and the VESC Express reach the controller over CAN.", t: "Keep on VESC. Other modes would break the link through your VESC Express." },
+  uavcan_esc_index: { w: "This motor's index in UAVCAN messages (a drone protocol).", t: "Only used in UAVCAN mode." },
+  uavcan_raw_mode: { w: "How raw UAVCAN throttle commands are interpreted.", t: "Only used in UAVCAN mode." },
+  uavcan_raw_rpm_max: { w: "Top speed (ERPM) for UAVCAN RPM commands.", t: "Only used in UAVCAN mode." },
+  uavcan_status_current_mode: { w: "Which current (motor or battery) is reported in UAVCAN status messages.", t: "Only used in UAVCAN mode." },
+  servo_out_enable: { w: "Uses the PPM port to output a servo signal instead.", t: NU },
+  kill_sw_mode: { w: "Sets an input that acts as an emergency stop switch.", t: "Usually Disabled on a balance board. A kill switch cutting power at speed would cause a nosedive." },
+  can_status_rate_1: canRate(1), can_status_msgs_r1: canMsgs(1), can_status_rate_2: canRate(2), can_status_msgs_r2: canMsgs(2),
+
+  // IMU
+  "imu_conf.use_magnetometer": { w: "Uses a compass sensor, if the IMU has one, to help with heading.", t: "Not needed for balancing. Usually off." },
+  "imu_conf.filter": { w: "The IMU chip's own built-in filtering level for accelerometer and gyro readings.", t: "Leave as your setup guide recommends." },
+  "imu_conf.accel_lowpass_filter_x": lp("X"), "imu_conf.accel_lowpass_filter_y": lp("Y"), "imu_conf.accel_lowpass_filter_z": lp("Z"),
+  "imu_conf.gyro_lowpass_filter": { w: "Smooths gyro readings on all three axes by filtering out vibration above this frequency. 0 turns it off.", t: "Leave at default unless a tuning guide says otherwise." },
+  "imu_conf.mahony_ki": { w: "Lets the firmware's angle filter slowly cancel out gyro drift.", t: "Refloat uses its own angle filter. Leave at default." },
+  "imu_conf.madgwick_beta": { w: "Strength setting for the Madgwick angle filter, if that filter is selected.", t: "Only used in Madgwick mode." },
+  "imu_conf.accel_offsets__0": aoff("X"), "imu_conf.accel_offsets__1": aoff("Y"), "imu_conf.accel_offsets__2": aoff("Z"),
+  "imu_conf.gyro_offsets__0": goff("X"), "imu_conf.gyro_offsets__1": goff("Y"), "imu_conf.gyro_offsets__2": goff("Z"),
+
+  // NRF
+  "app_nrf_conf.power": { w: "Transmit power of the NRF radio for wireless remotes.", t: NU },
+  "app_nrf_conf.speed": { w: "Data rate of the NRF radio link.", t: NU },
+  "app_nrf_conf.channel": { w: "Radio channel used by the NRF remote link.", t: NU },
+  "app_nrf_conf.crc_type": { w: "Error checking used on NRF radio packets.", t: NU },
+  "app_nrf_conf.send_crc_ack": { w: "Sends an acknowledgement when a valid radio packet arrives.", t: NU },
+  "app_nrf_conf.retry_delay": { w: "Wait time before resending an unacknowledged radio packet.", t: NU },
+  "app_nrf_conf.retries": { w: "How many times an unacknowledged radio packet is resent.", t: NU },
+  "app_nrf_conf.address__0": nrfAddr, "app_nrf_conf.address__1": nrfAddr, "app_nrf_conf.address__2": nrfAddr,
+
+  // PAS
+  "app_pas_conf.ctrl_type": { w: "Pedal assist mode for e-bikes: off, assist based on pedalling speed, or constant assist while pedalling.", t: NU },
+  "app_pas_conf.sensor_type": { w: "Type of pedal sensor.", t: NU },
+  "app_pas_conf.pedal_rpm_start": { w: "Pedalling speed where assist starts.", t: NU },
+  "app_pas_conf.pedal_rpm_end": { w: "Pedalling speed where assist reaches its maximum.", t: NU },
+  "app_pas_conf.invert_pedal_direction": { w: "Flips which pedal direction counts as forward.", t: NU },
+  "app_pas_conf.magnets": { w: "Number of magnets on the pedal sensor.", t: NU },
+  "app_pas_conf.use_filter": { w: "Smooths the pedal sensor signal.", t: NU },
+  "app_pas_conf.current_scaling": { w: "Maximum pedal assist, as a share of the motor's current limit.", t: NU },
+  "app_pas_conf.ramp_time_pos": ramp("up"), "app_pas_conf.ramp_time_neg": ramp("back down"),
+  "app_pas_conf.update_rate_hz": { w: "How often the pedal assist control runs.", t: NU },
+
+  // PPM
+  "app_ppm_conf.ctrl_type": ctrl("PPM (hobby remote receiver)"),
+  "app_ppm_conf.median_filter": { w: "Filters out glitchy pulses from the remote receiver.", t: NU },
+  "app_ppm_conf.safe_start": safe,
+  "app_ppm_conf.pid_max_erpm": { w: "Top speed (ERPM) at full stick in PID speed mode.", t: NU },
+  "app_ppm_conf.ramp_time_pos": ramp("up"), "app_ppm_conf.ramp_time_neg": ramp("back down"),
+  "app_ppm_conf.max_erpm_for_dir": { w: "Below this speed, braking twice switches to reverse.", t: NU },
+  "app_ppm_conf.smart_rev_max_duty": smartRevDuty, "app_ppm_conf.smart_rev_ramp_time": smartRevRamp,
+  "app_ppm_conf.multi_esc": multi, "app_ppm_conf.tc": tc, "app_ppm_conf.tc_max_diff": tcDiff,
+  "app_ppm_conf.pulse_start": { w: "Shortest pulse from the receiver, meaning minimum stick.", t: NU },
+  "app_ppm_conf.pulse_end": { w: "Longest pulse from the receiver, meaning maximum stick.", t: NU },
+  "app_ppm_conf.pulse_center": { w: "Pulse length when the stick is centred.", t: NU },
+  "app_ppm_conf.hyst": hyst,
+  "app_ppm_conf.throttle_exp": expo, "app_ppm_conf.throttle_exp_brake": { ...expo, w: "Shapes the brake response curve. 0 is linear." }, "app_ppm_conf.throttle_exp_mode": expoMode,
+
+  // UART
+  app_uart_baudrate: { w: "Speed of the serial (UART) link, used by some Bluetooth modules and accessories.", t: "Must match whatever is plugged into the UART port." },
+
+  // VESC Remote
+  "app_chuk_conf.ctrl_type": ctrl("VESC Remote / Nunchuk"),
+  "app_chuk_conf.ramp_time_pos": ramp("up"), "app_chuk_conf.ramp_time_neg": ramp("back down"),
+  "app_chuk_conf.stick_erpm_per_s_in_cc": { w: "How fast cruise control speed changes when you push the stick.", t: NU },
+  "app_chuk_conf.hyst": hyst,
+  "app_chuk_conf.use_smart_rev": { w: "Holding full brake at very low speed switches to driving backwards, so you can stop on a slope.", t: NU },
+  "app_chuk_conf.smart_rev_max_duty": smartRevDuty, "app_chuk_conf.smart_rev_ramp_time": smartRevRamp,
+  "app_chuk_conf.multi_esc": multi, "app_chuk_conf.tc": tc, "app_chuk_conf.tc_max_diff": tcDiff,
+  "app_chuk_conf.coast_brake_level": coast, "app_chuk_conf.coast_brake_ramp_time": coastRamp,
+  "app_chuk_conf.throttle_exp": expo, "app_chuk_conf.throttle_exp_brake": { ...expo, w: "Shapes the brake response curve. 0 is linear." }, "app_chuk_conf.throttle_exp_mode": expoMode,
+
+  // Motor info
+  motor_brand: { w: "Motor brand, for your own records.", t: "Doesn't affect riding." },
+  motor_model: { w: "Motor model, for your own records.", t: "Doesn't affect riding." },
+  motor_weight: { w: "Motor weight in grams, for your records and comparisons.", t: "Doesn't affect riding." },
+  motor_sensor_type: { w: "Which position sensor the motor has, for your records.", t: "Doesn't change how the motor is driven. That's the FOC Sensor Mode setting." },
+  motor_quality_bearings: { w: "Your rating of the motor's bearings, for records only.", t: "Doesn't affect riding." },
+  motor_quality_magnets: { w: "Your rating of the motor's magnets, for records only.", t: "Doesn't affect riding." },
+  motor_quality_construction: { w: "Your rating of the motor's build quality, for records only.", t: "Doesn't affect riding." },
+  si_motor_nl_current: { w: "Current the motor draws spinning with no load. Used by VESC Tool's motor comparison tool.", t: "Doesn't affect riding." },
+});
+})();
+// Beginner notes, part 3: remaining motor config settings.
+(() => {
+const NU = "Not used on a balance board, which drives the motor with FOC. ";
+const DET = "Set by motor detection or your controller preset. Leave it unless a guide for your motor says otherwise.";
+const hall = (i) => ({ w: `Entry ${i} of the Hall sensor table: it maps one Hall sensor reading to a motor position. The table is filled in by Hall sensor detection.`, t: "Don't edit by hand. Rerun detection if you change or rewire the motor." });
+const bldcHall = (i) => ({ w: `Entry ${i} of the BLDC-mode Hall sensor table.`, t: NU });
+const offI = (i) => ({ w: `Calibration offset for current sensor ${i}, so 0 A reads as 0 A.`, t: "Measured automatically by offset calibration. Don't edit by hand." });
+const offV = (i) => ({ w: `Calibration offset for phase voltage sensor ${i}.`, t: "Measured automatically by offset calibration. Don't edit by hand." });
+const offVu = (i) => ({ w: `Calibration offset for phase voltage sensor ${i} while the motor isn't being driven.`, t: "Measured automatically by offset calibration. Don't edit by hand." });
+const enc = { t: "Only used with an encoder. Balance board motors use Hall sensors." };
+const sp = (w) => ({ w, t: "Only used in speed control (PID speed) mode. Refloat controls current directly, so this isn't used." });
+const pp = (w) => ({ w, t: "Only used in position control mode. Not used on a balance board." });
+const hfi = (w) => ({ w, t: "Only used when the sensor mode is HFI (sensorless control at standstill). Balance boards normally use Hall sensors." });
+const ol = (w) => ({ w, t: "Only used when starting a motor without sensors. With Hall sensors these rarely matter." });
+
+Object.assign(window.GUIDE, {
+  // BLDC
+  sl_min_erpm: { w: "In BLDC mode, the speed below which the motor runs without position feedback.", t: NU },
+  sl_min_erpm_cycle_int_limit: { w: "A BLDC sensorless tuning value used at low speed.", t: NU },
+  sl_bemf_coupling_k: { w: "A BLDC sensorless tuning value that helps the motor start.", t: NU },
+  sl_cycle_int_limit: { w: "A BLDC sensorless timing value that decides when to switch to the next motor phase.", t: NU },
+  sl_phase_advance_at_br: { w: "BLDC timing advance at high speed.", t: NU },
+  sl_cycle_int_rpm_br: { w: "Speed where BLDC timing advance reaches its maximum.", t: NU },
+  l_max_erpm_fbrake: { w: "Highest speed where a full brake is allowed in BLDC mode.", t: NU },
+  l_max_erpm_fbrake_cc: { w: "Highest speed where full braking is allowed in current control (BLDC).", t: NU },
+  cc_gain: { w: "Current controller gain in BLDC and DC modes.", t: NU },
+  cc_ramp_step_max: { w: "Fastest allowed duty cycle change in BLDC/DC current control.", t: NU },
+  m_duty_ramp_step: { w: "Fastest allowed duty cycle change for BLDC and DC motors.", t: NU },
+  m_current_backoff_gain: { w: "How strongly BLDC/DC duty cycle mode reduces current to stay within limits.", t: NU },
+  m_bldc_f_sw_min: { w: "Lowest switching frequency in BLDC mode.", t: NU },
+  m_bldc_f_sw_max: { w: "Highest switching frequency in BLDC mode.", t: NU },
+  cc_startup_boost_duty: { w: "Minimum duty cycle used in BLDC current control, for more punch from a stop.", t: NU },
+  hall_table__0: bldcHall(0), hall_table__1: bldcHall(1), hall_table__2: bldcHall(2), hall_table__3: bldcHall(3),
+  hall_table__4: bldcHall(4), hall_table__5: bldcHall(5), hall_table__6: bldcHall(6), hall_table__7: bldcHall(7),
+  m_dc_f_sw: { w: "Switching frequency for brushed DC motors.", t: "Not used on a balance board." },
+
+  // FOC advanced
+  foc_dt_us: { w: "Corrects for a tiny built-in delay when the controller's switches change over. It mainly smooths very low speed running.", t: DET },
+  foc_pll_kp: { w: "How quickly the speed estimate follows changes in motor position (proportional gain).", t: DET },
+  foc_pll_ki: { w: "How the speed estimate removes long-term error (integral gain).", t: DET },
+  foc_duty_dowmramp_kp: { w: "Controls current spikes when duty cycle is reduced in duty cycle mode.", t: "Leave at default." },
+  foc_duty_dowmramp_ki: { w: "Second gain for the duty cycle down-ramp controller.", t: "Leave at default." },
+  foc_control_sample_mode: { w: "How often within each switching cycle the controller measures current and runs its control loop.", t: "Leave as your controller preset sets it." },
+  foc_current_sample_mode: { w: "Which current sensors are used for each measurement. It affects noise at high duty cycle.", t: "JetFleet recommends Longest Zero Time on firmware 6.06 and newer, and All Sensors Combined on 6.05." },
+  foc_observer_gain_slow: { w: "Scales the observer gain down at low duty cycle to help track the motor at low speed.", t: DET },
+  foc_current_filter_const: { w: "Smoothing on the current reading used by the slow absolute current limit. Lower is smoother and slower.", t: "Leave at default." },
+  foc_d_gain_scale_start: { w: "Duty cycle where one of the current controller's gains starts being reduced, for stability near full duty.", t: "Leave at default." },
+  foc_d_gain_scale_max_mod: { w: "How much that current controller gain is reduced at maximum duty cycle.", t: "Leave at default." },
+  foc_mtpa_mode: { w: "Maximum torque per amp: a trick that gets more torque from some motor types. Hub motors on boards don't benefit much.", t: "Usually Disabled on balance boards." },
+  foc_observer_offset: { w: "Corrects the observer's timing lag at high speed.", t: "Leave at default." },
+  foc_speed_soure: { w: "Where the speed estimate gets its position from: the combined sensor position, or the sensorless observer.", t: "Leave at default." },
+  foc_mag_vd_max: { w: "Limits how much voltage one axis of the current controller can take, keeping headroom for torque at full duty.", t: "Leave at default." },
+  foc_encoder_offset: { w: "Encoder zero point relative to the motor.", ...enc },
+  foc_encoder_ratio: { w: "How many motor electrical turns per encoder turn.", ...enc },
+  foc_encoder_inverted: { w: "Set if the encoder counts backwards.", ...enc },
+  foc_fw_backoff: { w: "A safety gain that reduces field weakening if it asks for more than the controller can deliver, preventing a runaway.", t: "Leave at default." },
+  foc_phase_filter_enable: { w: "Uses dedicated hardware filters to measure the motor's phase voltages directly, if the controller has them. This helps sensorless tracking.", t: "Leave as your controller preset sets it." },
+  foc_phase_filter_disable_fault: { w: "Turns off the fault that triggers when the phase filters give unexpected readings.", t: "Only for troubleshooting false faults." },
+
+  // HFI
+  foc_hfi_samples: hfi("How many HFI measurements are taken per motor revolution."),
+  foc_hfi_voltage_start: hfi("Test voltage used at start-up to find which way the motor is facing."),
+  foc_hfi_voltage_run: hfi("Test voltage injected while running at low speed to track motor position."),
+  foc_hfi_voltage_max: hfi("Test voltage used at maximum current."),
+  foc_hfi_gain: hfi("How strongly HFI corrects its position estimate."),
+  foc_hfi_max_err: hfi("Largest position error HFI will correct in one step."),
+  foc_hfi_hyst: hfi("Current threshold where HFI changes its injection pattern."),
+  foc_sl_erpm_hfi: hfi("Speed below which HFI is used."),
+  foc_hfi_start_samples: hfi("Number of measurements taken at start-up to find the motor direction."),
+  foc_hfi_obs_ovr_sec: hfi("How long the sensorless observer keeps control after dropping into HFI range."),
+  foc_hfi_amb_mode: hfi("Method used at start-up to work out which way the motor is facing."),
+  foc_hfi_amb_current: hfi("Current used by the direction-finding pulse."),
+  foc_hfi_amb_tres: hfi("Threshold for the direction-finding pulse."),
+  foc_hfi_reset_erpm: hfi("Speed below which HFI repeats its direction finding."),
+
+  // Hall
+  foc_hall_table__0: hall(0), foc_hall_table__1: hall(1), foc_hall_table__2: hall(2), foc_hall_table__3: hall(3),
+  foc_hall_table__4: hall(4), foc_hall_table__5: hall(5), foc_hall_table__6: hall(6), foc_hall_table__7: hall(7),
+  m_hall_extra_samples: { w: "Reads the Hall sensors several extra times and picks the middle value, to reject electrical noise.", t: "Higher rejects more noise but limits the switching frequency. Leave at default unless you get Hall noise." },
+
+  // Offsets
+  foc_offsets_cal_on_boot: { w: "Recalibrates the current and voltage sensors every time the controller starts.", t: "Keep on. Make sure the wheel isn't spinning when you power on." },
+  foc_offsets_cal_mode: { w: "When and how sensor offset calibration runs.", t: "Leave at default." },
+  foc_offsets_current__0: offI(0), foc_offsets_current__1: offI(1), foc_offsets_current__2: offI(2),
+  foc_offsets_voltage__0: offV(0), foc_offsets_voltage__1: offV(1), foc_offsets_voltage__2: offV(2),
+  foc_offsets_voltage_undriven__0: offVu(0), foc_offsets_voltage_undriven__1: offVu(1), foc_offsets_voltage_undriven__2: offVu(2),
+
+  // Sensorless start
+  foc_openloop_rpm: ol("Below this speed a sensorless motor is spun without position feedback until the observer can track it."),
+  foc_openloop_rpm_low: ol("Open-loop speed used at low current, as a fraction of the main open-loop speed."),
+  foc_sl_openloop_hyst: ol("How long the speed must stay low before the controller drops back into open loop."),
+  foc_sl_openloop_time_lock: ol("How long the motor is held still at the start of an open-loop start."),
+  foc_sl_openloop_time_ramp: ol("How long the open-loop start takes to ramp up speed."),
+  foc_sl_openloop_time: ol("How long the controller stays in open loop after the ramp."),
+  foc_sl_openloop_boost_q: ol("Extra current during an open-loop start to get past the motor's cogging."),
+  foc_sl_openloop_max_q: ol("Current limit during an open-loop start. Negative means no limit."),
+  foc_start_curr_dec: ol("Reduces the current limit at start-up so the observer can lock on. It reduces starting torque."),
+  foc_start_curr_dec_rpm: ol("Speed above which full current is available again."),
+  foc_hall_interp_erpm: { w: "Below this speed the controller smooths between Hall sensor steps.", t: "Leave at default." },
+
+  // General advanced
+  cc_min_current: { w: "The smallest current the controller will command. Requests below this let the motor freewheel.", t: "Leave at default." },
+  m_fault_stop_time_ms: { w: "How long the motor stays off after a fault before it can run again.", t: "Leave at default." },
+  m_out_aux_mode: { w: "What the controller's auxiliary output does (for example switching a fan or relay on at a temperature).", t: "Only matters if something is wired to the AUX output." },
+  l_duty_start: { w: "Duty cycle where the controller starts gently reducing current near top speed. 100% means it doesn't.", t: "Lower values soften the approach to the duty limit but cost top speed. Refloat's duty pushback is the usual warning instead." },
+  l_additional_faults: { w: "Extra fault checks you can turn on, such as overspeed or encoder slip.", t: "Leave at default unless you know you need one." },
+  l_erpm_abs_overspeed: { w: "Speed limit for the absolute overspeed fault, if that fault is enabled.", t: "A fault at speed is a nosedive. Only use with care." },
+
+  // BMS (motor config)
+  "bms.type": { w: "Whether a VESC BMS on the CAN bus reports battery data to this controller.", t: "Set to VESC BMS only if you have one." },
+  "bms.limit_mode": { w: "Which BMS readings (temperature, charge level, cell voltages) can reduce motor current.", t: "Only works with a VESC BMS." },
+  "bms.t_limit_start": { w: "Battery temperature where current starts being reduced.", t: "Only works with a VESC BMS." },
+  "bms.t_limit_end": { w: "Battery temperature where current is cut.", t: "Only works with a VESC BMS." },
+  "bms.soc_limit_start": { w: "Battery charge level where current starts being reduced.", t: "Only works with a VESC BMS." },
+  "bms.soc_limit_end": { w: "Battery charge level where current is cut.", t: "Only works with a VESC BMS." },
+  "bms.vmin_limit_start": { w: "Lowest cell voltage where current starts being reduced.", t: "Only works with a VESC BMS." },
+  "bms.vmin_limit_end": { w: "Lowest cell voltage where current is cut.", t: "Only works with a VESC BMS." },
+  "bms.vmax_limit_start": { w: "Highest cell voltage where regen braking starts being reduced.", t: "Only works with a VESC BMS." },
+  "bms.vmax_limit_end": { w: "Highest cell voltage where regen braking is cut.", t: "Only works with a VESC BMS." },
+  "bms.fwd_can_mode": { w: "Passes BMS messages from the CAN bus on to a connected app.", t: "Leave at default." },
+
+  // Current / sensors / temperature / voltage
+  m_drv8301_oc_mode: { w: "Over-current protection mode for controllers with a DRV8301 driver chip.", t: "Only matters on DRV8301 hardware." },
+  m_drv8301_oc_adj: { w: "Over-current threshold for DRV8301 driver chips.", t: "Only matters on DRV8301 hardware." },
+  l_in_current_max_scale: { w: "Scales Battery Current Max down by a percentage.", t: "100% means no scaling." },
+  l_in_current_min_scale: { w: "Scales Battery Current Min (regen) down by a percentage.", t: "100% means no scaling." },
+  m_encoder_counts: { w: "Resolution of an encoder, if one is fitted.", ...enc },
+  m_encoder_sin_amp: { w: "Sine signal amplitude of a sin/cos encoder.", ...enc },
+  m_encoder_cos_amp: { w: "Cosine signal amplitude of a sin/cos encoder.", ...enc },
+  m_encoder_sin_offset: { w: "Sine signal offset of a sin/cos encoder.", ...enc },
+  m_encoder_cos_offset: { w: "Cosine signal offset of a sin/cos encoder.", ...enc },
+  m_encoder_sincos_filter_constant: { w: "Smoothing on a sin/cos encoder signal.", ...enc },
+  m_encoder_sincos_phase_correction: { w: "Corrects phase error in a sin/cos encoder.", ...enc },
+  m_motor_temp_sens_type: { w: "Type of temperature sensor inside the motor, so temperatures read correctly.", t: "Must match your motor. A wrong type gives wrong motor temperatures, and thermal limits won't protect it." },
+  m_ntc_motor_beta: { w: "Calibration value (beta) for the motor's NTC temperature sensor.", t: "Use the value from your motor's spec." },
+  m_ptc_motor_coeff: { w: "Calibration value for a PTC motor temperature sensor.", t: "Only used with PTC sensors." },
+  m_ntcx_ptcx_res: { w: "Resistance of a custom motor temperature sensor.", t: "Only used with a custom sensor type." },
+  m_ntcx_ptcx_temp_base: { w: "Reference temperature for a custom motor temperature sensor.", t: "Only used with a custom sensor type." },
+  m_batt_filter_const: { w: "How much the battery level reading is smoothed, so it doesn't jump around when you accelerate.", t: "Higher is steadier but slower to update." },
+
+  // PID controllers
+  sp_pid_loop_rate: { w: "How often the speed and position controllers run.", t: "Not used by Refloat." },
+  s_pid_kp: sp("Speed controller proportional gain."),
+  s_pid_ki: sp("Speed controller integral gain."),
+  s_pid_kd: sp("Speed controller derivative gain."),
+  s_pid_kd_filter: sp("Smoothing on the speed controller's derivative term."),
+  s_pid_min_erpm: sp("Speed below which the speed controller switches off."),
+  s_pid_allow_braking: sp("Lets the speed controller brake to hold a speed."),
+  s_pid_ramp_erpms_s: sp("How fast the speed target is allowed to change."),
+  s_pid_speed_source: sp("Which speed estimate the speed controller uses."),
+  p_pid_kp: pp("Position controller proportional gain."),
+  p_pid_ki: pp("Position controller integral gain."),
+  p_pid_kd: pp("Position controller derivative gain."),
+  p_pid_kd_proc: pp("Position controller derivative gain applied to the measured position."),
+  p_pid_kd_filter: pp("Smoothing on the position controller's derivative term."),
+  p_pid_ang_div: pp("Maps one control turn to several motor turns."),
+  p_pid_gain_dec_angle: pp("Reduces position gains when close to the target."),
+  p_pid_offset: pp("Angle offset for the position controller."),
+});
+})();
+// Beginner notes, part 4: remaining Refloat settings.
+(() => {
+const tc = (f) => ({ w: `How smoothly ${f} moves the nose: the time it takes to get most of the way to its new angle. Lower reacts faster; higher feels smoother.`, t: "Too low can feel jerky; too high can feel slow and vague." });
+const onTc = (f) => ({ w: `How smoothly ${f} speeds up when moving the nose further from level.`, t: "Higher is gentler; lower is snappier." });
+const offTc = (f) => ({ w: `How smoothly ${f} speeds up when bringing the nose back to level.`, t: "Higher is gentler; lower is snappier." });
+const onLim = (f) => ({ w: `The fastest ${f} can tilt the nose, in degrees per second.`, t: "Lower values make the nose move more gently." });
+const offLim = (f) => ({ w: `The fastest ${f} can bring the nose back to level, in degrees per second.`, t: "" });
+const RB = "Changes need a board restart. ";
+const strip = (s) => ({
+  [`hardware.leds.${s}.order`]: { w: `Where the ${s} LED strip sits in the LED chain (first, second, third), or Not Present if you don't have one.`, t: RB + "Must match how your strips are wired." },
+  [`hardware.leds.${s}.count`]: { w: `Number of LEDs on the ${s} strip.`, t: RB + "Must match your strip, or the lights will look wrong." },
+  [`hardware.leds.${s}.color_order`]: { w: `The colour order your ${s} LED strip expects (GRB, RGB and so on). It depends on the LED chip.`, t: "If colours look wrong (red shows as green, for example), try another order." },
+  [`hardware.leds.${s}.reverse`]: { w: `Flips the direction of the ${s} LED strip.`, t: RB + "Use if animations or the status bar run the wrong way." },
+});
+const look = (s, label, extra = "") => ({
+  [`leds.${s}.mode`]: { w: `The light effect used for the ${label}${extra}.`, t: "" },
+  [`leds.${s}.brightness`]: { w: `Brightness of the ${label}${extra}.`, t: "Very low brightness can make LEDs lose colour or switch off." },
+  [`leds.${s}.color1`]: { w: `Main colour for the ${label}.`, t: "'White (full)' is brightest but uses the most power." },
+  [`leds.${s}.color2`]: { w: `Second colour for the ${label}, used by animated effects.`, t: "" },
+  [`leds.${s}.speed`]: { w: `Animation speed for the ${label}.`, t: "" },
+});
+
+Object.assign(window.GUIDE, {
+  "atr.filter.time_constant": tc("ATR"), "atr.filter.on_speed_time_constant": onTc("ATR"), "atr.filter.off_speed_time_constant": offTc("ATR"),
+  "atr.filter.on_speed_limit": onLim("ATR"), "atr.filter.off_speed_limit": offLim("ATR"),
+  "torque_tilt.filter.time_constant": tc("torque tilt"), "torque_tilt.filter.on_speed_time_constant": onTc("torque tilt"), "torque_tilt.filter.off_speed_time_constant": offTc("torque tilt"),
+  "torque_tilt.filter.on_speed_limit": onLim("torque tilt"), "torque_tilt.filter.off_speed_limit": offLim("torque tilt"),
+  "turn_tilt.filter.time_constant": tc("turn tilt"),
+  "remote.filter.time_constant": tc("remote tilt"),
+
+  "haptic.vibrate.frequency": { w: "How fast the motor vibrates for warning and error haptics.", t: "" },
+  "haptic.vibrate.strength": { w: "Maximum strength of the vibration haptic, in amps. 0 turns vibration off.", t: "Strength grows with speed up to Maximum Strength Speed." },
+  "haptic.current_threshold": { w: "Plays a solid warning tone when motor or battery current goes above this share of your limits. 0 turns it off.", t: "A handy warning that you're near your current limits." },
+  "haptic.min_strength": { w: "How strong haptic feedback is at a standstill, as a share of its full strength.", t: "" },
+  "haptic.max_strength_speed": { w: "Speed at which haptic feedback reaches full strength.", t: "" },
+  "haptic.strength_curvature": { w: "How haptic strength grows with speed. 0 is a straight line; higher stays gentle at low speed and ramps up faster at high speed.", t: "" },
+
+  inputtilt_remote_type: { w: "How a handheld remote connects to the controller (PPM, UART or none). Used for remote tilt and remote throttle.", t: "Leave on None if you don't use a remote." },
+  inputtilt_angle_limit: { w: "Maximum nose angle the remote can set. Half throttle gives half this angle.", t: "" },
+  inputtilt_invert_throttle: { w: "Flips which way the remote throttle tilts the nose.", t: "" },
+  inputtilt_deadband: { w: "A dead zone around the remote's centre, so a stick that doesn't fully re-centre doesn't tilt the nose.", t: "" },
+  "remote.max_move_speed": { w: "Top speed when using a remote (or the app) to move the board without riding it.", t: "0 turns remote moving off." },
+  remote_throttle_grace_period: { w: "After the board disengages, remote throttle is blocked for this many seconds.", t: "Keep it above 0 so remote tilt can't accidentally drive the board as you step off." },
+
+  "leds.on": { w: "Turns all Refloat-controlled LEDs on or off.", t: "Can also be toggled from the Refloat app tab until the next restart." },
+  "leds.headlights_on": { w: "Turns headlights and taillights on. They switch ends when you change riding direction.", t: "" },
+  "leds.headlights_transition": { w: "Animation used when headlights turn on or off as you engage.", t: "" },
+  "leds.direction_transition": { w: "Animation used when headlights and taillights swap ends as you change direction.", t: "" },
+  "leds.lights_off_when_lifted": { w: "Turns the front and rear lights off when you lift the nose up to carry the board.", t: "Saves you from LEDs shining in your eyes." },
+  "leds.status_on_front_when_lifted": { w: "Shows the status bar on the front strip when you lift the nose.", t: "" },
+  ...look("front", "front strip", " when headlights are off"),
+  ...look("rear", "rear strip", " when headlights are off"),
+  ...look("headlights", "headlights"),
+  ...look("taillights", "taillights"),
+  ...look("status_idle", "status bar idle animation"),
+  "leds.status.brightness_headlights_off": { w: "Status bar brightness in the daytime (headlights off).", t: "High so you can read it in sunlight." },
+  "leds.status.brightness_headlights_on": { w: "Status bar brightness at night (headlights on).", t: "Low so it doesn't dazzle you." },
+  "leds.status.show_sensors_while_running": { w: "Shows the blue foot sensor indicators on the status bar while riding, if a sensor is released.", t: "" },
+  "leds.status.motor_utilization_threshold": { w: "When motor load (the highest of duty cycle and current use) goes above this, the status bar shows load instead of battery.", t: "" },
+  "leds.status.red_bar_percentage": { w: "Point where the status bar turns red (low battery or high load).", t: "" },
+  "leds.status.idle_timeout": { w: "Seconds before the status bar switches to its idle animation. 0 turns idle off.", t: "" },
+
+  "hardware.leds.mode": { w: "Who drives the LEDs: Refloat itself (Internal), a separate light module (External), both, or nobody (Off).", t: "" },
+  "hardware.leds.pin": { w: "Which controller pin the LED strip data wire is connected to.", t: RB + "Depends on your controller model." },
+  "hardware.leds.pin_config": { w: "Whether the LED pin uses a pull-up to 5 V. It depends on your controller.", t: RB + "The Refloat description lists which controllers need which." },
+  ...strip("status"), ...strip("front"), ...strip("rear"),
+
+  "meta.is_default": { w: "An internal flag that marks the config as freshly reset to defaults. Used by Refloat's auto-backup.", t: "Not a riding setting." },
+});
+})();
+Object.assign(window.GUIDE, {
+  sl_max_fullbreak_current_dir_change: { w: "In BLDC mode, the most braking current allowed while the motor changes direction.", t: "Not used on a balance board, which drives the motor with FOC." },
+  motor_description: { w: "Free-text notes about the motor, for your own records.", t: "Doesn't affect riding." },
+  motor_quality_description: { w: "Free-text notes about the motor's quality, for your own records.", t: "Doesn't affect riding." },
+});

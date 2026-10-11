@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>VESC Config Explainer</title>
+<title>VESC Config Viewer</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: sticky header with tabs and search, then sections of setting cards in a single readable column. */
+/* Layout: phone = header then one column of cards; desktop = sticky sidebar (tabs, search, section list) beside a multi-column card grid. */
 :root {
   --bg: #f3f5f4; --surface: #ffffff; --fg: #17201d; --muted: #5d6a65; --line: #d5ddd9;
   --accent: #0d7c5f; --accent-fg: #ffffff; --accent-soft: #e2f2ec; --warn: #8a4a00; --warn-soft: #fbefdc;
@@ -73,20 +73,49 @@ details.more summary { cursor: pointer; color: var(--muted); font-size: .85rem }
 details.more p { margin: 6px 0 0; font-size: .9rem; color: var(--muted); white-space: pre-line }
 .key { font: .75rem var(--mono); color: var(--muted); word-break: break-all }
 .none { color: var(--muted); padding-block: 20px }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.small-btn { font: 600 .9rem var(--body); border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer }
+.small-btn.solid { background: var(--accent); color: var(--accent-fg) }
+.layout { display: none; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: .85rem }
+.layout button { font: inherit; border: 0; background: var(--surface); color: var(--muted); padding: 5px 10px; cursor: pointer }
+.layout button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg) }
+@media (min-width: 760px) { .layout { display: inline-flex } }
+nav#toc { display: none }
+
+/* Desktop layout */
+body.desk .wrap { max-width: 96rem; display: grid; grid-template-columns: 20rem minmax(0, 1fr); gap: 0 36px; align-items: start }
+body.desk header.top { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; border-bottom: 0; border-right: 1px solid var(--line); padding-right: 24px; padding-bottom: 24px; align-content: start }
+body.desk .tools { flex-direction: column; align-items: stretch }
+body.desk input[type="search"] { flex: none }
+body.desk nav#toc { display: grid; gap: 2px; margin-top: 6px }
+nav#toc a { color: var(--fg); text-decoration: none; padding: 4px 8px; border-radius: 6px; display: flex; justify-content: space-between; gap: 8px; font-size: .92rem }
+nav#toc a:hover { background: var(--accent-soft) }
+nav#toc a span { color: var(--muted); font-variant-numeric: tabular-nums }
+body.desk main { padding-top: 20px }
+body.desk .cards { grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); align-items: start }
+.cards > h4 { grid-column: 1 / -1; margin-bottom: 0 }
+body.desk .secnote { max-width: 80ch }
+body.desk details.section { scroll-margin-top: 12px }
 @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .15s } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="titlerow"><h1>VESC Config Explainer</h1><a href="./">Save a config from your board</a></div>
+    <div class="titlerow"><h1>VESC Config Viewer</h1><a href="./">Read a config from your board</a></div>
     <p class="meta" id="meta">Open a file saved with VESC Config Saver to see every setting explained.</p>
+    <div class="actions">
+      <button class="small-btn solid" type="button" id="download" hidden>Download config</button>
+      <button class="small-btn" type="button" id="openother" hidden>Open another file</button>
+      <div class="layout" role="group" aria-label="Layout"><button type="button" data-l="auto">Auto</button><button type="button" data-l="phone">Phone</button><button type="button" data-l="desktop">Desktop</button></div>
+    </div>
     <div class="tabs" id="tabs" hidden></div>
     <div class="tools" id="tools" hidden>
       <input type="search" id="q" placeholder="Search settings, e.g. duty, brake, battery" aria-label="Search settings">
       <label class="chk"><input type="checkbox" id="changed"> Only changed from default</label>
       <label class="chk"><input type="checkbox" id="unused"> Show unused sections</label>
     </div>
+    <nav id="toc" aria-label="Sections"></nav>
   </header>
 
   <main id="main">
@@ -97,14 +126,14 @@ details.more p { margin: 6px 0 0; font-size: .9rem; color: var(--muted); white-s
         <button class="btn" type="button" id="pick">Choose a config file</button>
         <button class="btn alt" type="button" id="last" hidden>Open the config you just saved</button>
       </div>
-      <input type="file" id="file" accept=".json,application/json" hidden>
       <div class="drop" id="drop">Or drop a .json file here</div>
       <p id="err" class="secnote" role="alert"></p>
     </div>
   </main>
 </div>
 
-<script src="guide.js"></script>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script src="guide.js?v=2"></script>
 <script>
 const $ = s => document.querySelector(s);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(k => k != null && k !== "")); return e; };
@@ -112,17 +141,49 @@ const UNUSED = new Set(["Motor/BLDC", "Motor/DC", "Motor/PID Controllers", "App/
 
 let state = { cfg: null, tabs: [], tab: null };
 
+// ---- Layout ----
+let layoutPref = "auto";
+try { layoutPref = localStorage.getItem("vcs:layout") || "auto"; } catch (e) {}
+const wide = matchMedia("(min-width: 1000px)"), canDesk = matchMedia("(min-width: 760px)");
+function applyLayout() {
+  const desk = canDesk.matches && (layoutPref === "desktop" || (layoutPref === "auto" && wide.matches));
+  document.body.classList.toggle("desk", desk);
+  for (const b of document.querySelectorAll(".layout button")) b.setAttribute("aria-pressed", b.dataset.l === layoutPref);
+}
+for (const b of document.querySelectorAll(".layout button")) b.onclick = () => { layoutPref = b.dataset.l; try { localStorage.setItem("vcs:layout", layoutPref); } catch (e) {} applyLayout(); };
+wide.addEventListener("change", applyLayout); canDesk.addEventListener("change", applyLayout);
+applyLayout();
+
 // ---- Loading ----
-try { if (localStorage.getItem("vcs:last")) $("#last").hidden = false; } catch (e) {}
+// The saver hands over the config it just read through localStorage, or window.name if storage is blocked.
+function lastSaved() {
+  try { const s = localStorage.getItem("vcs:last"); if (s) return JSON.parse(s); } catch (e) {}
+  try { if (window.name.startsWith("vcs:")) return JSON.parse(window.name.slice(4)); } catch (e) {}
+  return null;
+}
+if (lastSaved()) $("#last").hidden = false;
+if (location.hash === "#last") {
+  const cfg = lastSaved();
+  if (cfg) load(cfg).catch(e => showErr("Couldn't open the config that was just read: " + e.message));
+  history.replaceState(null, "", location.pathname);
+}
+$("#openother").onclick = () => $("#file").click();
+$("#download").onclick = () => {
+  const cfg = state.cfg; if (!cfg) return;
+  const name = `vesc-config-${(cfg.firmware.hw || "vesc").replace(/\W+/g, "_")}-${(cfg.exportedAt || new Date().toISOString()).slice(0, 19).replace(/[:T]/g, "-")}.json`;
+  const a = el("a", { href: URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 1)], { type: "application/json" })), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+};
 $("#pick").onclick = () => $("#file").click();
-$("#file").onchange = e => e.target.files[0] && readFile(e.target.files[0]);
-$("#last").onclick = () => { Promise.resolve().then(() => load(JSON.parse(localStorage.getItem("vcs:last")))).catch(e => showErr("Couldn't open the saved config: " + e.message)); };
+$("#file").onchange = e => { e.target.files[0] && readFile(e.target.files[0]); e.target.value = ""; };
+$("#last").onclick = () => { Promise.resolve().then(() => load(lastSaved())).catch(e => showErr("Couldn't open the saved config: " + e.message)); };
 const drop = $("#drop");
 drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]); };
 function readFile(f) { f.text().then(t => load(JSON.parse(t))).catch(e => showErr("That file couldn't be read as a VESC Config Saver export: " + e.message)); }
-function showErr(m) { $("#err").textContent = m; }
+function showErr(m) { const e = $("#err") || $("#meta"); e.textContent = m; }
 
 async function load(cfg) {
   if (!cfg || !cfg.firmware) throw new Error("missing firmware info");
@@ -142,7 +203,7 @@ async function load(cfg) {
   state = { cfg, tabs, tab: tabs[0] };
   $("#meta").textContent = `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
   $("#tabs").replaceChildren(...tabs.map(t => el("button", { type: "button", textContent: t.label, onclick: () => { state.tab = t; render(); } })));
-  $("#tabs").hidden = $("#tools").hidden = false;
+  $("#tabs").hidden = $("#tools").hidden = $("#download").hidden = $("#openother").hidden = false;
   render();
 }
 
@@ -233,14 +294,15 @@ function render() {
     }
     if (!count) continue;
     const note = GUIDE_SECTIONS[key];
-    const sec = el("details", { className: "section", open: !UNUSED.has(key) || !!q },
+    const sec = el("details", { className: "section", id: "s-" + g.n.replace(/\W+/g, "-").toLowerCase(), open: !UNUSED.has(key) || !!q },
       el("summary", {}, el("h2", { textContent: g.n }), el("span", { className: "count", textContent: `${count} setting${count === 1 ? "" : "s"}` })),
       note ? el("p", { className: "secnote", textContent: note }) : null, ...body.filter(Boolean));
     sections.push(sec);
   }
   // Anything not listed in the groups.
   const rest = Object.keys(tab.values).filter(n => !seen.has(n)).map(n => makeCard(n, tab.values[n], tab.def?.p?.[n], q, onlyChanged)).filter(Boolean);
-  if (rest.length && (showUnused || q)) sections.push(el("details", { className: "section", open: true }, el("summary", {}, el("h2", { textContent: "Other" }), el("span", { className: "count", textContent: `${rest.length}` })), el("div", { className: "cards" }, ...rest)));
+  if (rest.length && (showUnused || q)) sections.push(el("details", { className: "section", id: "s-other", open: true }, el("summary", {}, el("h2", { textContent: "Other" }), el("span", { className: "count", textContent: `${rest.length}` })), el("div", { className: "cards" }, ...rest)));
+  $("#toc").replaceChildren(...sections.map(s => el("a", { href: "#" + s.id, onclick: e => { e.preventDefault(); s.open = true; s.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); } }, s.querySelector("h2").textContent, el("span", { textContent: s.querySelector(".count").textContent.replace(/ settings?/, "") }))));
   $("#main").replaceChildren(...(sections.length ? sections : [el("p", { className: "none", textContent: q ? `No settings match "${q}".` : "Nothing to show with these filters." })]));
 }
 
