@@ -206,7 +206,7 @@ const REC = { "speed": ["speed_kmh", 1], "erpm": ["erpm", 1], "current": ["motor
   "duty_cycle": ["duty_pct", 100], "batt_voltage": ["battery_v", 1], "batt_current": ["battery_current_a", 1], "mosfet_temp": ["controller_temp_c", 1], "motor_temp": ["motor_temp_c", 1],
   "pitch": ["pitch_deg", 1], "balance_pitch": ["balance_pitch_deg", 1], "roll": ["roll_deg", 1], "adc_left": ["footpad_left_v", 1], "adc_right": ["footpad_right_v", 1],
   "setpoint": ["setpoint_deg", 1], "atr.setpoint": ["atr_setpoint_deg", 1], "brake_tilt.setpoint": ["brake_tilt_setpoint_deg", 1], "torque_tilt.setpoint": ["torque_tilt_setpoint_deg", 1],
-  "turn_tilt.setpoint": ["turn_tilt_setpoint_deg", 1], "remote.setpoint": ["remote_setpoint_deg", 1], "balance_current": ["balance_current_a", 1], "control.freq": ["loop_hz", 1] };
+  "turn_tilt.setpoint": ["turn_tilt_setpoint_deg", 1], "remote.setpoint": ["remote_setpoint_deg", 1], "balance_current": ["balance_current_a", 1], "control.freq": ["loop_hz", 1], "remote.input": ["remote_input", 1] };
 
 // ---------- Connection ----------
 const link = new VescLink();
@@ -261,7 +261,7 @@ let live = null, wakeLock = null;
 async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {} }
 document.addEventListener("visibilitychange", () => { if (live && document.visibilityState === "visible") keepAwake(); });
 
-$("#live").onclick = () => live ? stopLive() : startLive();
+$("#live").onclick = () => { if (!live) startLive(); else live.stopRequested = true; };
 
 async function startLive() {
   const rf = board.refloat;
@@ -272,8 +272,24 @@ async function startLive() {
   const gnss = !!(rf && rf.capabilities & 4);
   const rt2 = rf ? [...RT2, ...(gnss ? RT2_GNSS : [])] : [];
   const bmsCols = bmsCells ? ["bms_v_total", "bms_current_a", "bms_soc_pct", "bms_cell_min_v", "bms_cell_max_v", "bms_cell_diff_mv", "bms_temp_max_c", ...Array.from({ length: bmsCells }, (_, i) => `bms_cell_${i + 1}_v`)] : [];
-  const cols = rf ? [...STATE_COLS, ...RT1.map(c => c[1]), ...rt2.map(c => c[1]), ...VALUE_COLS, ...IMU_COLS, ...bmsCols] : [...VALUE_COLS, ...IMU_COLS, ...bmsCols];
-  live = { source: "live", started: new Date().toISOString(), columns: ["time_s", ...cols], rows: [], t0: null, last: {}, events: [], useRefloat: !!rf, rt2, mask2: maskOf(rt2), bms: bmsCells > 0, failures: 0, n: 0 };
+  let base = rf ? [...STATE_COLS, ...RT1.map(c => c[1]), ...rt2.map(c => c[1])] : [];
+  // Refloat's internal live data (what its own app screen charts) has a few values the public command doesn't. Read them by name.
+  let internal = null;
+  if (rf) {
+    try {
+      const r = new Reader(await link.request([CUSTOM, PKG, 32], { match: pkgMatch(32), timeout: 1500, tries: 2 }), 3);
+      const list = () => { const n = r.u8(), ids = []; for (let i = 0; i < n; i++) { const len = r.u8(); ids.push(new TextDecoder().decode(r.b.slice(r.p, r.p + len))); r.p += len; } return ids; };
+      const always = list(), runtime = list();
+      const name = id => REC[id] ? REC[id][0] : id;
+      internal = { always: always.map(name), runtime: runtime.map(name) };
+      const extra = [...internal.always, ...internal.runtime].filter(c => !base.includes(c));
+      base = [...base, ...extra];
+      internal.keep = new Set(extra);
+      log(`Refloat internal data: ${extra.length} extra values (${extra.join(", ")})`);
+    } catch (e) { log("Refloat's internal live data isn't available; using the public live data only."); }
+  }
+  const cols = [...base, ...VALUE_COLS, ...IMU_COLS, ...bmsCols];
+  live = { source: "live", started: new Date().toISOString(), columns: ["time_s", ...cols], rows: [], t0: null, last: {}, events: [], useRefloat: !!rf, rt2, mask2: maskOf(rt2), bms: bmsCells > 0, internal, alertsSeen: new Set(), failures: 0, n: 0 };
   $("#live").disabled = false;
   $("#live").textContent = "Stop live log"; $("#live").classList.add("stop");
   $("#readouts").hidden = false; $("#fetch").disabled = true;
@@ -282,6 +298,10 @@ async function startLive() {
   const save = setInterval(() => idbSet("live", logData(live)), 5000);
   let rateT = performance.now(), rateN = 0;
   while (live) {
+    if (live.stopRequested) {
+      if (live.useRefloat && live.t0 !== null) await readAlerts(live, live.t0, rf.tickRate || 10000);
+      stopLive(); break;
+    }
     const t = performance.now();
     try {
       const vals = await sample(rf, live.n++);
@@ -290,6 +310,7 @@ async function startLive() {
       const row = [vals.time_s, ...live.columns.slice(1).map(c => vals[c] ?? null)];
       live.rows.push(row);
       noteEvents(live, vals);
+      if (live.rows.length === 1 && live.useRefloat) await readAlerts(live, live.t0, rf.tickRate || 10000);
       rateN++;
       if (t - rateT > 1000) { $("#r-rate").textContent = (rateN * 1000 / (t - rateT)).toFixed(0) + " Hz"; rateT = t; rateN = 0; }
       showReadouts(vals);
@@ -322,6 +343,7 @@ async function sample(rf, n) {
   if (rf) {
     Object.assign(o, await readRefloat(rf));
     if (n % 5 === 0) Object.assign(o, await readValues());
+    if (live.internal && n % 2 === 1) Object.assign(o, await readInternal());
     if (n % 10 === 5) Object.assign(o, await readImu());
   } else {
     Object.assign(o, await readValues(), await readImu());
@@ -332,6 +354,37 @@ async function sample(rf, n) {
     try { const b = await readBms(); Object.assign(o, b.cols); } catch (e) {}
   }
   return o;
+}
+
+async function readInternal() {
+  const r = new Reader(await link.request([CUSTOM, PKG, 31], { match: pkgMatch(31), timeout: 800, tries: 1 }), 3);
+  const mask = r.u8(); r.u8(); r.u32(); r.u32();
+  const o = {}, I = live.internal;
+  for (const c of I.always) { const v = f16(r.u16()); if (I.keep.has(c)) o[c] = v; }
+  if (mask & 1) for (const c of I.runtime) { const v = f16(r.u16()); if (I.keep.has(c)) o[c] = v; }
+  return o;
+}
+
+// Refloat's alert log (currently firmware faults), with timestamps. Adds events not seen before.
+async function readAlerts(target, t0, tickRate) {
+  try {
+    const r = new Reader(await link.request([CUSTOM, PKG, 35], { match: pkgMatch(35), timeout: 1500, tries: 2 }), 3);
+    r.u32(); r.u32();
+    const str = () => { const len = r.u8(); const s = new TextDecoder().decode(r.b.slice(r.p, r.p + len)); r.p += len; return s; };
+    if (r.u8()) str();
+    let added = 0;
+    while (r.left() >= 7) {
+      const time = r.u32(), id = r.u8(), active = r.u8(), code = r.u8();
+      const name = id === 1 && code ? str().replace(/^FAULT_CODE_/, "") : "";
+      const key = `${time}:${id}:${active}`;
+      if (target.alertsSeen?.has(key)) continue;
+      target.alertsSeen?.add(key);
+      const what = id === 1 ? `Firmware fault${name ? " " + name : code ? " " + (FAULTS[code] || code) : ""}` : `Alert ${id}`;
+      target.events.push({ t: ((time - t0) | 0) / tickRate, kind: active ? "stop" : "info", text: `${what} ${active ? "started" : "cleared"} (Refloat alert log)` });
+      added++;
+    }
+    if (added) log(`Refloat alert log: ${added} entr${added === 1 ? "y" : "ies"}`);
+  } catch (e) {}
 }
 
 async function readRefloat(rf) {
@@ -421,7 +474,8 @@ function showReadouts(o) {
   $("#r-count").textContent = live.rows.length;
 }
 
-const logData = L => ({ format: "vesc-log/1", source: L.source, started: L.started, board: board && { bluetoothName: board.name, hw: board.ctrl.hw, firmware: fwVersion(board.ctrl), package: board.refloat && `${board.refloat.name} ${board.refloat.version}` }, columns: L.columns, rows: L.rows.map(r => [...r]), events: L.events });
+const logData = L => ({ ...logDataRaw(L), events: [...L.events].sort((a, b) => a.t - b.t) });
+const logDataRaw = L => ({ format: "vesc-log/1", source: L.source, started: L.started, board: board && { bluetoothName: board.name, hw: board.ctrl.hw, firmware: fwVersion(board.ctrl), package: board.refloat && `${board.refloat.name} ${board.refloat.version}` }, columns: L.columns, rows: L.rows.map(r => [...r]), events: L.events });
 
 // ---------- Refloat recording ----------
 $("#fetch").onclick = async () => {
@@ -461,6 +515,11 @@ $("#fetch").onclick = async () => {
       if (L.ws && !prev.ws) data.events.push({ t: L.t, kind: "pb", text: "Wheel slip" });
       prev = L;
     }
+    data.alertsSeen = new Set();
+    const firstTicks = t0;
+    await readAlerts(data, firstTicks, rf.tickRate || 10000);
+    delete data.alertsSeen;
+    data.events.sort((a, b) => a.t - b.t);
     $("#recStatus").textContent = `Downloaded ${rows.length} samples (${rows[rows.length - 1][0].toFixed(2)} s). Recording starts again next time you engage.`;
     showLog(data);
   } catch (e) {
