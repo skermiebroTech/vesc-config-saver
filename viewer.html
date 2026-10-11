@@ -228,13 +228,21 @@ async function load(cfg) {
     if (!pkg.values) continue;
     let def = null;
     try { def = await packageDefs(pkg.definitionCompressed); } catch (e) {}
-    tabs.push({ id: "Refloat", label: (pkg.name || "Package").replace(/ Cfg$/, ""), values: pkg.values, def });
+    const name = (pkg.name || "Package").replace(/ Cfg$/, "");
+    // Section notes: Refloat's apply to Refloat and the Float family it grew from.
+    const kind = /express/i.test(pkg.device?.hw || "") && pkg.index === 0 ? "Express" : /refloat|^float$|^float /i.test(name) ? "Refloat" : name;
+    const onOther = pkg.device && pkg.device.hwType !== 0;
+    const sameName = pkg.device && pkg.device.hw.toLowerCase().startsWith(name.toLowerCase());
+    tabs.push({ id: kind, pkg: true, other: onOther, label: onOther && !sameName ? `${name} · ${pkg.device.hw}` : name, values: pkg.values, def, note: pkg.rawOmitted });
   }
+  // Packages on the motor controller first, then Motor and App, then other devices (such as a VESC Express).
+  const others = tabs.filter(t => t.other); tabs.splice(0, tabs.length, ...tabs.filter(t => !t.other));
   if (cfg.mcconf?.values) tabs.push({ id: "Motor", label: "Motor", values: cfg.mcconf.values, def: desc?.mcconf });
   if (cfg.appconf?.values) tabs.push({ id: "App", label: "App", values: cfg.appconf.values, def: desc?.appconf });
+  tabs.push(...others);
   if (!tabs.length) throw new Error("no decoded settings in this file");
   state = { cfg, tabs, tab: tabs[0] };
-  $("#meta").textContent = (cfg.bluetoothName ? `${cfg.bluetoothName} · ` : "") + `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
+  $("#meta").textContent = (cfg.bluetoothName ? `${cfg.bluetoothName} · ` : "") + `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (cfg.devices?.length > 1 ? ` · devices: ${cfg.devices.map(d => d.hw + (d.canId != null ? ` (CAN ${d.canId})` : "")).join(", ")}` : "") + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
   $("#tabs").replaceChildren(...tabs.map(t => el("button", { type: "button", textContent: t.label, onclick: () => { state.tab = t; render(); } })));
   $("#tabs").hidden = $("#tools").hidden = $("#download").hidden = $("#openother").hidden = false;
   render();
@@ -283,7 +291,7 @@ function fmt(v, d) {
 }
 function pretty(o) { return o.replace(/^FOC_OBSERVER_|^FOC_CC_DECOUPLING_|^BATTERY_TYPE_|^FOC_SENSOR_MODE_/, "").replace(/_/g, " "); }
 function isChanged(v, d) {
-  if (!d || d.def == null) return false;
+  if (!d || d.def == null || v.hidden) return false;
   const def = d.def;
   if (typeof v.value === "boolean") return v.value !== (def === "1" || def === "true");
   if (typeof v.value === "number") { const n = +def; if (isNaN(n)) return false; return Math.abs(v.value - n) > Math.max(1e-6, Math.abs(n) * 1e-4); }
@@ -304,10 +312,10 @@ function render() {
   const seen = new Set(), sections = [];
   let groups = tab.def?.g?.length ? tab.def.g : [{ n: "All settings", subs: [{ n: "", p: Object.keys(tab.values) }] }];
   // Packages put everything under one "General" group; show each of its subgroups as its own section.
-  if (tab.id === "Refloat") groups = groups.flatMap(gr => gr.n === "General" ? gr.subs.map(s => ({ n: s.n, subs: [s] })) : [gr]);
+  if (tab.pkg) groups = groups.flatMap(gr => gr.n === "General" ? gr.subs.map(s => ({ n: s.n, subs: [s] })) : [gr]);
   for (const g of groups) {
     const key = `${tab.id}/${g.n}`;
-    if (UNUSED.has(key) && !showUnused) continue;
+    if ((UNUSED.has(key) || (tab.pkg && g.n === "Internal")) && !showUnused) continue;
     const body = [];
     let count = 0;
     for (const sg of g.subs) {
@@ -326,7 +334,7 @@ function render() {
       if (items.length) body.push(sg.n && sg.n !== g.n ? el("h3", { textContent: sg.n }) : null, el("div", { className: "cards" }, ...items));
     }
     if (!count) continue;
-    const note = GUIDE_SECTIONS[key];
+    const note = GUIDE_SECTIONS[key] || (tab.pkg && GUIDE_SECTIONS[`Refloat/${g.n}`] && /float|tnt|balance/i.test(tab.label) ? GUIDE_SECTIONS[`Refloat/${g.n}`] : null);
     const sec = el("details", { className: "section", id: "s-" + g.n.replace(/\W+/g, "-").toLowerCase(), open: !UNUSED.has(key) || !!q },
       el("summary", {}, el("h2", { textContent: g.n }), el("span", { className: "count", textContent: `${count} setting${count === 1 ? "" : "s"}` })),
       note ? el("p", { className: "secnote", textContent: note }) : null, ...body.filter(Boolean));
@@ -336,16 +344,18 @@ function render() {
   const rest = Object.keys(tab.values).filter(n => !seen.has(n)).map(n => makeCard(n, tab.values[n], tab.def?.p?.[n], q, onlyChanged)).filter(Boolean);
   if (rest.length && (showUnused || q)) sections.push(el("details", { className: "section", id: "s-other", open: true }, el("summary", {}, el("h2", { textContent: "Other" }), el("span", { className: "count", textContent: `${rest.length}` })), el("div", { className: "cards" }, ...rest)));
   $("#toc").replaceChildren(...sections.map(s => el("a", { href: "#" + s.id, onclick: e => { e.preventDefault(); s.open = true; s.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); } }, s.querySelector("h2").textContent, el("span", { textContent: s.querySelector(".count").textContent.replace(/ settings?/, "") }))));
+  if (tab.note && sections.length) sections.unshift(el("p", { className: "secnote", textContent: tab.note }));
   $("#main").replaceChildren(...(sections.length ? sections : [el("p", { className: "none", textContent: q ? `No settings match "${q}".` : "Nothing to show with these filters." })]));
 }
 
 function makeCard(name, v, d, q, onlyChanged) {
-  const g = GUIDE[name];
+  const g = window.GUIDE_SCOPED?.[state.tab.id]?.[name] || GUIDE[name];
   const title = d?.n || v.name || name;
   const changed = isChanged(v, d);
   if (onlyChanged && !changed) return null;
   if (q && ![title, name, g?.w, g?.t, d?.d].some(s => s && s.toLowerCase().includes(q))) return null;
   const badges = [];
+  if (v.hidden) badges.push(el("span", { className: "badge def", textContent: "Hidden: passwords and PINs are never saved" }));
   if (changed) badges.push(el("span", { className: "badge", textContent: "Changed" }), el("span", { className: "badge def", textContent: "Default: " + fmtDefault(v, d) }));
   const official = d?.d && d.d !== g?.w ? d.d : "";
   return el("article", { className: "card" + (changed ? " changed" : "") },

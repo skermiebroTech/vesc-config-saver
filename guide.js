@@ -78,7 +78,7 @@ window.GUIDE = {
 
   // ---------- App config ----------
   app_to_use: { w: "Which built-in input app the controller runs (remote, ADC, UART and so on).", t: "With Refloat installed, the balance logic runs from the package, so this is usually set to UART or none per your setup guide." },
-  controller_id: { w: "This controller's ID on the CAN bus, the internal network linking the controller to things like a VESC Express Bluetooth module.", t: "Each device on the bus needs a unique ID. Yours is likely 100." },
+  controller_id: { w: "This controller's ID on the CAN bus, the internal network linking the controller to things like a VESC Express Bluetooth module.", t: "Each device on the bus needs a unique ID." },
   can_baud_rate: { w: "Speed of the CAN bus between the controller and other modules.", t: "All devices on the bus must use the same rate." },
   shutdown_mode: { w: "How and when the controller turns itself off.", t: "Depends on your power switch hardware." },
   "imu_conf.type": { w: "Which motion sensor (IMU) the controller uses to sense tilt.", t: "Usually the controller's built-in IMU." },
@@ -730,3 +730,213 @@ Object.assign(window.GUIDE_SECTIONS, {
   "Motor/GPD": "General purpose drive: using the controller as a signal generator. Not used on a balance board.",
 });
 })();
+
+// Beginner notes, part 6: Float package, Balance package and VESC Express settings.
+(() => {
+const buzz = (when) => ({ w: `Which haptic buzz (a sound or vibration played through the motor) to use ${when}. None turns it off.`, t: "Audible buzzes are easier to notice; vibrating ones are subtler." });
+const two = "Only for two-wheeled balance vehicles, not one-wheel boards.";
+const flt = (w) => ({ w, t: "0 turns the filter off." });
+const SECRET = "Never saved by this app: the value is hidden in the file and in the viewer.";
+Object.assign(window.GUIDE, {
+  // Float package
+  hertz: { w: "How many times per second the balance loop runs.", t: "Should match (or be a multiple of) the IMU sample rate, for example 832 Hz." },
+  surge_angle: { w: "Surge: a small, sudden nose jolt as an extra warning when you're near the duty limit. This is how big the jolt is. 0 turns surge off.", t: "Small angles are enough. Surge itself uses power, so don't rely on it at the very limit." },
+  surge_duty_start: { w: "Duty cycle where surge starts. It triggers in up to three stages, 2% duty apart.", t: "The higher you set it, the riskier it gets." },
+  is_surgebeep_enabled: { w: "Beeps once, twice or three times when each surge stage triggers.", t: "Helpful while learning what surge feels like. Beepers can be hard to hear when riding." },
+  haptic_buzz_intensity: { w: "How much current the haptic buzz uses, which sets how strong it feels.", t: "" },
+  haptic_buzz_min: { w: "Buzz strength at low speed, where full strength would feel too harsh.", t: "" },
+  haptic_buzz_duty: buzz("when duty cycle passes the pushback threshold"),
+  haptic_buzz_hv: buzz("when battery voltage is too high"),
+  haptic_buzz_lv: buzz("when battery voltage is too low"),
+  haptic_buzz_temp: buzz("when the controller or motor gets within 3 °C of its temperature limit"),
+  haptic_buzz_current: buzz("when you go over the motor current or continuous current limits"),
+  haptic_buzz_bms: buzz("when the BMS reports an error"),
+  inputtilt_speed: { w: "How fast remote tilt moves the nose, in degrees per second.", t: "" },
+  inputtilt_smoothing_factor: { w: "How much remote tilt is smoothed as it starts and as it reaches the target angle. 0 is none, 3 is the most.", t: "1–2 is a common choice." },
+  remote_throttle_current_max: { w: "The most current remote throttle can use to move the board while you're not riding it.", t: "Keep this low for safety." },
+  torquetilt_on_speed: { w: "The fastest torque tilt can lift the nose, in degrees per second.", t: "Lower values move the nose more gently." },
+  torquetilt_off_speed: { w: "The fastest torque tilt can let the nose back down.", t: "" },
+  turntilt_speed: { w: "The fastest turn tilt can lift the nose.", t: "" },
+  atr_on_speed: { w: "The fastest ATR can tilt the nose, in degrees per second.", t: "Lower values move the nose more gently." },
+  atr_off_speed: { w: "The fastest ATR can bring the nose back to level.", t: "" },
+  atr_response_boost: { w: "Makes ATR react faster at high speed, where quick responses matter more.", t: "" },
+  atr_transition_boost: { w: "Speeds up ATR when it switches between uphill and downhill, so the nose doesn't lag behind.", t: "" },
+  atr_test1: { w: "A setting for development testing only.", t: "Ignore it." },
+  atr_test2: { w: "A setting for development testing only.", t: "Ignore it." },
+  atr_test3: { w: "A setting for development testing only.", t: "Ignore it." },
+  led_type: { w: "What kind of LED strip is connected: none, RGB, RGBW, or an external light module.", t: "Must match your hardware." },
+  led_status_count: { w: "Number of LEDs on the status bar strip, which must be first in the chain. 0 if you don't have one.", t: "" },
+  led_forward_count: { w: "Number of LEDs on the forward strip, second in the chain. 0 if you don't have one.", t: "" },
+  led_rear_count: { w: "Number of LEDs on the rear strip, third in the chain. 0 if you don't have one.", t: "" },
+  led_brightness: { w: "Brightness of the front and rear strips while riding.", t: "" },
+  led_brightness_idle: { w: "Brightness of the front and rear strips when the board is disengaged.", t: "" },
+  led_mode: { w: "Colour pattern for the front and rear strips while riding.", t: "" },
+  led_mode_idle: { w: "Colour pattern for the front and rear strips while disengaged.", t: "" },
+  led_status_brightness: { w: "Brightness of the status bar.", t: "" },
+  led_status_mode: { w: "What the status bar shows: battery, foot sensors and duty cycle.", t: "" },
+  limit_current_accel: { w: "Current limit for accelerating on level ground. ATR can go above it.", t: "Lower values make nose drags easier." },
+  limit_current_brake: { w: "Current limit for braking on level ground. ATR can go above it.", t: "Lower values make tail drags easier." },
+  limit_current_cont: { w: "If average current stays above this for more than 5 seconds, the beeper warns you. It doesn't actually limit anything.", t: "" },
+  dark_pitch_offset: { w: "Nose angle correction for riding upside down (darkride).", t: "Shouldn't be needed if the IMU is calibrated." },
+  float_disable: { w: "Turns the Float package off, for motor detection or troubleshooting.", t: "The board won't balance while this is on." },
+  float_version: { w: "The Float package version.", t: "Information only." },
+
+  // Balance package
+  pid_mode: { w: "Whether the balance loop uses angle only, or angle plus rotation rate (cascade).", t: "" },
+  kd: { w: "Angle D: damping. Reacts to how fast the angle is changing, to stop wobble.", t: "Too high can buzz." },
+  ki2: { w: "Rate I: integral gain for the rate loop in cascade mode.", t: "" },
+  kd2: { w: "Rate D: derivative gain for the rate loop in cascade mode.", t: "" },
+  loop_time_filter: { w: "Smooths out timing jitter in the balance loop.", t: "" },
+  fault_duty: { w: "Duty cycle that triggers a safety cutoff.", t: "A cutoff at speed is a nosedive. Duty pushback should always warn you well before this." },
+  fault_delay_duty: { w: "How long duty cycle must stay above the cutoff before the motor disengages.", t: "" },
+  deadzone: { w: "A small angle around level where the board doesn't push back.", t: "" },
+  multi_esc: { w: "Sends the same commands to other VESCs on CAN, for multi-motor vehicles.", t: "Not used on a one-wheel board." },
+  yaw_kp: { w: "Yaw P: steering stabilisation.", t: two },
+  yaw_ki: { w: "Yaw I: steering stabilisation.", t: two },
+  yaw_kd: { w: "Yaw D: steering stabilisation.", t: two },
+  roll_steer_kp: { w: "Turns leaning into steering.", t: two },
+  roll_steer_erpm_kp: { w: "Lean-to-steer that scales with speed.", t: two },
+  yaw_current_clamp: { w: "Maximum current for steering corrections.", t: two },
+  brake_timeout: { w: "Turns the holding brake off after this many seconds. 0 means never.", t: "" },
+  kd_pt1_lowpass_frequency: flt("Smooths the D term by filtering out changes above this frequency."),
+  kd_pt1_highpass_frequency: flt("Filters slow drift out of the D term (changes below this frequency)."),
+  torquetilt_filter: flt("Smooths the current reading used for torque tilt, so it isn't twitchy."),
+
+  // VESC Express
+  can_status_rate_hz: { w: "How often the VESC Express sends status messages on the CAN bus. 0 turns them off.", t: "Leave at default unless a setup guide says otherwise." },
+  wifi_mode: { w: "Wi-Fi off, connect to a Wi-Fi network (station), or create its own network (access point).", t: "Wi-Fi changes apply after a reboot." },
+  wifi_sta_ssid: { w: "Name of the Wi-Fi network the VESC Express connects to in station mode.", t: "" },
+  wifi_sta_key: { w: "Password for the Wi-Fi network in station mode.", t: SECRET },
+  wifi_ap_ssid: { w: "Name of the Wi-Fi network the VESC Express creates in access point mode.", t: "" },
+  wifi_ap_key: { w: "Password for the VESC Express's own Wi-Fi network.", t: SECRET },
+  use_tcp_local: { w: "Lets apps on the same Wi-Fi network connect to the board.", t: "Applies after a reboot." },
+  use_tcp_hub: { w: "Connects the board to a TCP hub, so VESC Tool can reach it over the internet.", t: "Applies after a reboot." },
+  tcp_hub_url: { w: "Address of the TCP hub server.", t: "" },
+  tcp_hub_port: { w: "Port of the TCP hub server.", t: "" },
+  tcp_hub_id: { w: "The ID this board uses on the TCP hub.", t: "" },
+  tcp_hub_pass: { w: "Password needed to connect to this board through the TCP hub.", t: SECRET },
+  ble_mode: { w: "Bluetooth off, on for anyone, on with a PIN (encrypted), or on with scripting.", t: "Enabled and Encrypted stops anyone without the PIN from connecting to your board." },
+  ble_name: { w: "The Bluetooth name of the board (up to 8 characters). It's what you see when scanning.", t: "" },
+  ble_pin: { w: "The 6-digit Bluetooth PIN, used when Bluetooth mode is Enabled and Encrypted.", t: SECRET },
+  ble_service_capacity: { w: "How many extra Bluetooth services scripts can create.", t: "Only matters for custom scripts. Leave at default." },
+  ble_chr_descr_capacity: { w: "How many extra Bluetooth characteristics scripts can create.", t: "Only matters for custom scripts. Leave at default." },
+});
+})();
+
+// Beginner notes, part 7: TNT (Trick and Trail) package.
+(() => {
+const curve = (brake) => {
+  const o = {}, pre = brake ? "brake" : "", what = brake ? "braking" : "acceleration";
+  for (let i = 1; i <= 6; i++) {
+    o[`${pre}current${i}`] = { w: `Point ${i} of the ${what} curve: the current (torque) the board uses when the nose is at Pitch Angle ${i}. TNT draws a curve through these points.`, t: "Points must go up in order. Steeper curves feel more aggressive." };
+    o[`${pre}pitch${i}`] = { w: `Point ${i} of the ${what} curve: the pitch angle where Pitch ${i} Current applies.`, t: `Each angle must be bigger than the one before it, or it's ignored.` };
+  }
+  return o;
+};
+const levels = (name, prefix, angPrefix, what, unit, brake) => {
+  const o = {};
+  for (let i = 1; i <= 3; i++) {
+    o[`${prefix}${i}`] = { w: `${what} level ${i} strength. ${brake ? "Reduces" : "Adds"} current while turning, starting at level ${i}'s ${name} angle.`, t: brake ? "High values can make the board feel like it drops out of a turn. Start low." : "Higher values give more support in turns." };
+    o[`${angPrefix}${i}`] = { w: `The ${name} ${unit} where ${what.toLowerCase()} level ${i} starts.`, t: "" };
+  }
+  return o;
+};
+const dbg = (what) => ({ w: `Shows ${what} debug information on the package's app screen.`, t: "For tuning only. Only one debug view works at a time." });
+Object.assign(window.GUIDE, {
+  kp0: { w: "The base acceleration stiffness: current (torque) per degree of nose dip. TNT uses this alone if no curve points are set.", t: "Higher feels tighter. Too high for the first curve point is overridden." },
+  pitch_kp_input: { w: "Lets you enter the acceleration curve as stiffness (kp) values instead of currents.", t: "Both describe the same curve; use whichever is easier for you." },
+  kp_rate: { w: "Pitch rate stiffness: reacts to how fast the nose is moving. Higher feels more stable and race-like; lower feels looser.", t: "" },
+  pitch_filter: { w: "Smooths the pitch reading. Lower values reduce vibration from a steep curve but react slower.", t: "" },
+  kalman_factor1: { w: "Kalman filter setting 1 for the pitch angle, which smooths out vibration. Higher trusts the IMU reading more.", t: "Leave at default unless you're tuning vibration." },
+  kalman_factor2: { w: "Kalman filter setting 2 for the pitch angle.", t: "Leave at default unless you're tuning vibration." },
+  kalman_factor3: { w: "Kalman filter setting 3 for the pitch angle.", t: "Leave at default unless you're tuning vibration." },
+  ...curve(false),
+  brake_curve: { w: "Uses a separate curve for braking. When off, braking uses the acceleration curve.", t: "" },
+  brake_kp0: { w: "Base braking stiffness: current per degree of tail dip.", t: "" },
+  brakekp_rate: { w: "Pitch rate stiffness while braking.", t: "" },
+  pitch_kp_input_brake: { w: "Lets you enter the braking curve as stiffness (kp) values instead of currents.", t: "" },
+  ...curve(true),
+  ...levels("roll", "roll_kp", "roll", "Roll support", "angle", false),
+  ...levels("roll", "brkroll_kp", "brkroll", "Braking roll", "angle", true),
+  rollkp_higherpm: { w: "Speed where the low-speed roll boost has fully faded out.", t: "" },
+  rollkp_lowerpm: { w: "Up to this speed, roll support is boosted by the maximum scaler.", t: "" },
+  rollkp_maxscale: { w: "How much roll support is boosted at low speed, as a percentage.", t: "" },
+  roll_hs_higherpm: { w: "Speed where the high-speed roll boost reaches its maximum.", t: "" },
+  roll_hs_lowerpm: { w: "Speed where the high-speed roll boost starts.", t: "" },
+  roll_hs_maxscale: { w: "How much roll support is boosted at high speed, as a percentage.", t: "" },
+  yaw_rate_kp: { w: "Yaw rate stiffness: adds stability while carving, based on how fast you're turning.", t: "" },
+  yaw_rate_brake_kp: { w: "Yaw rate stiffness while braking.", t: "" },
+  ...levels("yaw", "yaw_kp", "yaw", "Yaw support", "rate", false),
+  ...levels("yaw", "brkyaw_kp", "brkyaw", "Braking yaw", "rate", true),
+  yaw_minerpm: { w: "Below this speed, turning doesn't affect the tune.", t: "" },
+  is_surge_enabled: { w: "Surge: gives a burst of maximum motor output when current hits the high-current threshold, to help keep the nose up.", t: "" },
+  surge_startcurrent: { w: "Motor current that triggers surge (or the high-current buzz) at low duty cycle.", t: "Set close to your motor's maximum current." },
+  surge_start_hd_current: { w: "Surge trigger current at maximum duty cycle, where surging more easily helps.", t: "" },
+  surge_scaleduty: { w: "Above this duty cycle, the surge trigger current starts dropping towards the max-duty value.", t: "" },
+  surge_pitchmargin: { w: "Adjusts the target angle at the end of surge so the board doesn't brake.", t: "" },
+  surge_maxangle: { w: "Limits how far surge can lift the nose before it ends.", t: "" },
+  surge_minerpm: { w: "Below this speed, high current doesn't trigger surge or the buzz.", t: "" },
+  surge_duty: { w: "How fast surge can ramp up output.", t: "Very low values weaken surge." },
+  current_filter: { w: "Smooths the motor current reading. Lower filters more but adds delay.", t: "" },
+  tiltback_surge_speed: { w: "How fast the nose returns after surge ends.", t: "" },
+  is_traction_enabled: { w: "Traction control: if the wheel suddenly spins up (losing grip), current is reduced until it grips again.", t: "" },
+  wheelslip_accelstart: { w: "How fast the motor must speed up to count as losing traction.", t: "Powerful motors and batteries need higher values." },
+  wheelslip_accelslowed: { w: "Acceleration drop that counts as getting traction back.", t: "" },
+  wheelslip_accelend: { w: "Acceleration below which traction control ends.", t: "Higher values end traction control sooner." },
+  wheelslip_scaleaccel: { w: "Scales the traction-loss threshold at low speed, where the motor can accelerate harder.", t: "" },
+  wheelslip_scaleerpm: { w: "Speed up to which the low-speed scaling applies.", t: "" },
+  wheelslip_filter_freq: { w: "Smooths the speed reading used by traction control.", t: "" },
+  wheelslip_max_angle: { w: "Safety limit: traction control ends if the nose is this far from the target angle.", t: "" },
+  wheelslip_accelhold: { w: "After traction control ends, it won't restart while acceleration stays above this.", t: "" },
+  wheelslip_resettime: { w: "Wait time after traction control ends before it can start again.", t: "" },
+  wheelslip_erpm_rate_limit: { w: "Limits how fast the estimated rider speed can change during wheel slip.", t: "" },
+  wheelslip_erpm_exclusion_rate: { w: "Speed changes faster than this are ignored when estimating rider speed.", t: "" },
+  wheelslip_erpm_margin: { w: "How much faster than the estimated rider speed the wheel must spin before traction control activates.", t: "Larger margins mean fewer false triggers." },
+  is_tc_braking_enabled: { w: "Traction braking: stops the wheel spinning backwards while braking. Works best at high loop rates.", t: "" },
+  tc_braking_angle: { w: "Nose-down angle set by the remote that's needed to allow traction braking.", t: "" },
+  tc_braking_min_erpm: { w: "Minimum speed for traction braking.", t: "" },
+  tc_braking_off_time: { w: "Delay before traction braking turns off, to ignore glitches.", t: "" },
+  enable_speed_stability: { w: "Speed stability: makes the board stiffer as speed rises.", t: "" },
+  enable_throttle_stability: { w: "Throttle stability: lets a remote increase stiffness. Turns off remote tilt.", t: "" },
+  stabl_pitch_max_scale: { w: "How much stiffer the acceleration and braking curves get at maximum stability.", t: "" },
+  stabl_rate_max_scale: { w: "How much stiffer pitch rate gets at maximum stability.", t: "" },
+  stabl_min_erpm: { w: "Speed where speed stability starts.", t: "" },
+  stabl_max_erpm: { w: "Speed where speed stability reaches its maximum.", t: "" },
+  stabl_ramp: { w: "How fast stability can increase.", t: "Lower stops the nose feeling like it lifts as you speed up." },
+  stabl_ramp_down: { w: "How fast stability can decrease.", t: "Lower stops the nose feeling like it dips as you slow down." },
+  ema_factor: { w: "Smooths the current the package asks for, by averaging new and old values.", t: "" },
+  is_quickstop_enabled: { w: "Quick stop: disengages when you're off the foot sensors, slow, and the nose is pitched up.", t: "" },
+  quickstop_angle: { w: "Nose angle needed for quick stop.", t: "" },
+  quickstop_erpm: { w: "The board must be slower than this for quick stop.", t: "" },
+  midvolt_warning: { w: "Battery voltage where a one-time 'reduced range' beep plays.", t: "" },
+  lowvolt_warning: { w: "Battery voltage where a one-time 'low range' beep plays.", t: "" },
+  tiltback_ht_angle: { w: "How far the nose lifts when the controller or motor is too hot.", t: "" },
+  tiltback_ht_speed: { w: "How fast the nose lifts for high-temperature tiltback.", t: "Very fast tiltback can throw you off balance." },
+  tone_freq_high_current: { w: "Pitch of the warning tone played through the motor at high current.", t: "" },
+  tone_volt_high_current: { w: "Volume of the high-current warning tone.", t: "" },
+  tone_freq_high_duty: { w: "Pitch of the warning tone at high duty cycle.", t: "Some frequencies can unsettle the board. Test carefully." },
+  tone_volt_high_duty: { w: "Volume of the high duty cycle warning tone.", t: "Too loud can unsettle the board." },
+  beep_voltage: { w: "Volume of the beep tones played through the motor.", t: "" },
+  stickytiltval1: { w: "First sticky tilt angle: a nose angle the remote can lock in.", t: "" },
+  stickytiltval2: { w: "Second sticky tilt angle, used after the first.", t: "" },
+  stickytilt_holdcurrent: { w: "Above this current, sticky tilt won't drop from angle 2 to angle 1, to avoid a nosedive or tail drag.", t: "" },
+  is_stickytilt_enabled: { w: "Sticky tilt: flick the remote to lock in a nose angle.", t: "" },
+  simple_start_delay: { w: "After disengaging, simple start waits this long before it can engage again.", t: "" },
+  overcurrent_margin: { w: "The high-current tone plays this many amps before the surge threshold.", t: "" },
+  overcurrent_period: { w: "How long the high-current tone can play.", t: "" },
+  is_resettripdata_enabled: { w: "Resets trip stats on the package's app screen when you save settings.", t: "" },
+  is_pitchdebug_enabled: dbg("pitch"), is_rolldebug_enabled: dbg("roll"), is_yawdebug_enabled: dbg("yaw"),
+  is_stabilitydebug_enabled: dbg("stability"), is_currentdebug_enabled: dbg("current"), is_surgedebug_enabled: dbg("surge"),
+  is_tcdebug_enabled: dbg("traction control"), is_brakingdebug_enabled: dbg("traction braking"),
+  disable_pkg: { w: "Turns the package off, for motor detection or troubleshooting.", t: "The board won't balance while this is on." },
+  version: { w: "The package version.", t: "Information only." },
+});
+})();
+
+// Notes for settings whose meaning depends on the device or package (checked before GUIDE).
+window.GUIDE_SCOPED = {
+  Express: {
+    controller_id: { w: "The VESC Express's own ID on the CAN bus, the internal network it shares with the motor controller.", t: "Must be different from the controller's ID. Setup guides say keep it lower than the controller's and never 1." },
+    can_baud_rate: { w: "Speed of the CAN bus between the VESC Express and the controller.", t: "Must match the controller's CAN baud rate, or they can't talk to each other." },
+  },
+};

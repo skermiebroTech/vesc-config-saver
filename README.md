@@ -4,7 +4,9 @@ A web page that connects to a VESC controller over Bluetooth, reads its full con
 
 - motor config
 - app config
-- every package config the firmware reports, such as Refloat, including the full tune
+- every package config on every VESC device on the board's CAN bus: Refloat, Float, TNT (Trick and Trail), Balance and any other package that registers a config page, plus the VESC Express's own settings
+
+Passwords and PINs (such as a VESC Express's Wi-Fi password and Bluetooth PIN) are never saved. Their values are replaced with "(hidden)", and raw data isn't kept for any config page that contains them.
 
 For each part the file holds the raw config data (the same bytes VESC Tool reads, base64-encoded) plus the decoded setting names and values. Package configs also include their own definition, so they can always be decoded later.
 

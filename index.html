@@ -70,7 +70,7 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
 <main>
   <header>
     <h1>VESC Config Saver</h1>
-    <p class="sub">Reads the motor, app and Refloat settings from your controller over Bluetooth, then opens them in the config viewer, where you can download them as one file. Already have a file? <a href="viewer.html">Open the config viewer</a>.</p>
+    <p class="sub">Reads the motor, app and package settings (Refloat, Float, TNT and others) from every VESC device on your board over Bluetooth, then opens them in the config viewer, where you can download them as one file. Already have a file? <a href="viewer.html">Open the config viewer</a>.</p>
   </header>
 
   <button id="go" type="button">Connect and read config</button>
@@ -81,7 +81,7 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
     <li data-k="fw"><span class="dot"></span><span>Read firmware version <span class="note"></span></span></li>
     <li data-k="mc"><span class="dot"></span><span>Read motor config <span class="note"></span></span></li>
     <li data-k="app"><span class="dot"></span><span>Read app config <span class="note"></span></span></li>
-    <li data-k="pkg"><span class="dot"></span><span>Read Refloat / package config <span class="note"></span></span></li>
+    <li data-k="pkg"><span class="dot"></span><span>Read packages (Refloat, Float, TNT and others) <span class="note"></span></span></li>
     <li data-k="save"><span class="dot"></span><span>Open config viewer <span class="note"></span></span></li>
   </ul>
 
@@ -163,29 +163,32 @@ async function run() {
     step("conn", "ok", dev.name || ""); log("Connected to " + (dev.name || "controller"));
 
     step("fw", "run");
+    // Find every device: the one we're connected to, plus everything on its CAN bus.
+    // Packages can be installed on any of them (for example Refloat on the controller and another package on a VESC Express).
     canId = null;
-    let info = await readFw();
-    if (info.hwType !== 0) {
-      // Connected to a Bluetooth bridge such as a VESC Express. Find the motor controller on CAN.
-      out.bridge = info;
-      log(`Connected to ${info.hw} (firmware ${info.major}.${String(info.minor).padStart(2, "0")}), a Bluetooth bridge. Looking for the motor controller on CAN...`);
-      const ids = Array.from((await request([COMM.PING_CAN], 6000, 2)).slice(1));
-      log("CAN devices found: " + (ids.join(", ") || "none"));
-      let found = null;
-      for (const id of ids) {
-        canId = id;
-        try { const f = await readFw(); log(`CAN ${id}: ${f.hw} firmware ${f.major}.${String(f.minor).padStart(2, "0")}`); if (f.hwType === 0) { found = f; break; } }
-        catch (e) { log(`CAN ${id}: no reply`); }
-      }
-      if (!found) throw new Error("No motor controller found behind " + info.hw);
-      info = found; info.canId = canId;
+    const local = await readFw();
+    log(`Connected to ${local.hw} (firmware ${fwVersion(local)})`);
+    const devices = [{ canId: null, info: local }];
+    let ids = [];
+    try { ids = Array.from((await request([COMM.PING_CAN], 6000, 2)).slice(1)); } catch (e) { log("No reply to the CAN scan. Reading only the connected device."); }
+    if (ids.length) log("CAN devices found: " + ids.join(", "));
+    for (const id of ids) {
+      canId = id;
+      try { const f = await readFw(); f.canId = id; devices.push({ canId: id, info: f }); log(`CAN ${id}: ${f.hw}, firmware ${fwVersion(f)}, ${f.customConfigs} config page(s)`); }
+      catch (e) { log(`CAN ${id}: no reply`); }
     }
+    const ctrl = devices.find(d => d.info.hwType === 0);
+    if (!ctrl) throw new Error("No motor controller found");
+    if (ctrl.canId !== null) out.bridge = local;
+    out.devices = devices.map(d => ({ hw: d.info.hw, firmware: fwVersion(d.info), hwType: d.info.hwType, canId: d.canId, uuid: d.info.uuid }));
+    const info = ctrl.info;
+    canId = ctrl.canId;
     out.firmware = info;
-    const ver = `${info.major}.${String(info.minor).padStart(2, "0")}`;
-    step("fw", "ok", `${ver} on ${info.hw}`); log(`Firmware ${ver}, hardware ${info.hw}, package configs: ${info.customConfigs}`);
+    const ver = fwVersion(info);
+    step("fw", "ok", `${ver} on ${info.hw}`); log(`Motor controller: ${info.hw}, firmware ${ver}`);
     const desc = await loadDesc(ver);
     const defs = desc && { mcconf: defsFromDesc(desc.mcconf), appconf: defsFromDesc(desc.appconf) };
-    if (!defs) log(`No parameter list for firmware ${ver}. Motor and app settings are saved as raw data only; Refloat settings are still readable.`, "err");
+    if (!defs) log(`No parameter list for firmware ${ver}. Motor and app settings are saved as raw data only; package settings are still readable.`, "err");
 
     for (const [k, cmd, key, label] of [["mc", COMM.GET_MCCONF, "mcconf", "motor"], ["app", COMM.GET_APPCONF, "appconf", "app"]]) {
       step(k, "run");
@@ -199,33 +202,50 @@ async function run() {
       step(k, "ok", `${raw.length} bytes`); log(`Read ${label} config (${raw.length} bytes)`);
     }
 
+    // Package and device config pages, from every device that has any.
     out.packages = [];
-    if (!info.customConfigs) step("pkg", "skip", "no package config found");
-    for (let ci = 0; ci < info.customConfigs; ci++) {
-      step("pkg", "run", `config ${ci + 1} of ${info.customConfigs}`);
-      // Definition XML, fetched in chunks (same as VESC Tool).
-      let xml = new Uint8Array(0), total = -1;
-      while (total < 0 || xml.length < total) {
-        const len = total < 0 ? 10 : Math.min(400, total - xml.length);
-        const r = new Reader(await request([COMM.GET_CUSTOM_CONFIG_XML, ci, ...i32(len), ...i32(xml.length)]), 1);
-        r.i8(); total = r.i32(); const ofs = r.i32();
-        const data = r.b.slice(r.p);
-        if (ofs === xml.length) { const n = new Uint8Array(xml.length + data.length); n.set(xml); n.set(data, xml.length); xml = n; }
-        if (!data.length) break;
+    const SECRET = /(^|[_.])(key|pass|password|pin|secret|token)$/i;
+    const total = devices.reduce((n, d) => n + (d.info.customConfigs || 0), 0);
+    if (!total) step("pkg", "skip", "no package config found");
+    for (const d of devices) {
+      canId = d.canId;
+      for (let ci = 0; ci < (d.info.customConfigs || 0); ci++) {
+        step("pkg", "run", `${d.info.hw}: config ${ci + 1} of ${d.info.customConfigs}`);
+        try {
+          // Definition XML, fetched in chunks (same as VESC Tool).
+          let xml = new Uint8Array(0), size = -1;
+          while (size < 0 || xml.length < size) {
+            const len = size < 0 ? 10 : Math.min(400, size - xml.length);
+            const r = new Reader(await request([COMM.GET_CUSTOM_CONFIG_XML, ci, ...i32(len), ...i32(xml.length)]), 1);
+            r.i8(); size = r.i32(); const ofs = r.i32();
+            const data = r.b.slice(r.p);
+            if (ofs === xml.length) { const n = new Uint8Array(xml.length + data.length); n.set(xml); n.set(data, xml.length); xml = n; }
+            if (!data.length) break;
+          }
+          const raw = (await request([COMM.GET_CUSTOM_CONFIG, ci], 4000)).slice(2);
+          const pkg = { index: ci, device: { hw: d.info.hw, firmware: fwVersion(d.info), hwType: d.info.hwType, canId: d.canId }, raw: b64(raw), definitionCompressed: b64(xml) };
+          let secrets = [];
+          try {
+            const pdefs = defsFromXml(new TextDecoder().decode(await qUncompress(xml)), new DOMParser());
+            secrets = pdefs.o.filter(n => SECRET.test(n));
+            const dec = decodeConfig(raw, pdefs);
+            pkg.values = dec.values;
+            pkg.name = pdefs.p.hw_name?.[0] || (d.info.hwType !== 0 && ci === 0 ? `${d.info.hw} settings` : `Package config ${ci}`);
+          } catch (e) { log(`Could not decode ${d.info.hw} config ${ci}: ${e.message}`, "err"); secrets = ["unknown"]; }
+          // Never save passwords or PINs (for example a VESC Express's Wi-Fi password and Bluetooth PIN).
+          if (secrets.length) {
+            for (const n of secrets) if (pkg.values?.[n]) pkg.values[n] = { ...pkg.values[n], value: "(hidden)", hidden: true };
+            delete pkg.raw;
+            pkg.rawOmitted = "This config contains passwords or PINs, so its raw data isn't saved.";
+            log(`${pkg.name || "Config " + ci}: passwords and PINs hidden`);
+          }
+          out.packages.push(pkg);
+          log(`Read ${pkg.name || "config " + ci} from ${d.info.hw} (${raw.length} bytes)`);
+        } catch (e) { log(`Could not read config ${ci} from ${d.info.hw}: ${e.message}`, "err"); }
       }
-      const raw = (await request([COMM.GET_CUSTOM_CONFIG, ci], 4000)).slice(2);
-      const pkg = { index: ci, raw: b64(raw), definitionCompressed: b64(xml) };
-      try {
-        const xmlText = new TextDecoder().decode(await qUncompress(xml));
-        const pdefs = defsFromXml(xmlText, new DOMParser());
-        const d = decodeConfig(raw, pdefs);
-        pkg.values = d.values;
-        pkg.name = (pdefs.p.hw_name && pdefs.p.hw_name[0]) || `Package config ${ci}`;
-      } catch (e) { log(`Could not decode package config ${ci}: ${e.message}`, "err"); }
-      out.packages.push(pkg);
-      log(`Read ${pkg.name || "package config " + ci} (${raw.length} bytes)`);
-      step("pkg", "ok", out.packages.map(p => p.name || "config").join(", "));
     }
+    if (total) step("pkg", "ok", out.packages.map(p => p.name || "config").join(", "));
+    canId = ctrl.canId;
     await dev.gatt.disconnect();
 
     step("save", "run");
