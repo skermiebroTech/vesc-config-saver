@@ -1,0 +1,17 @@
+# The publish workflow lives on main. A push here starts it, so SEO changes go live.
+name: Republish site
+
+on:
+  push:
+    branches: [seo]
+
+permissions:
+  actions: write
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh workflow run pages.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

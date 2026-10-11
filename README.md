@@ -11,4 +11,4 @@ This branch holds the search and social files, kept out of `main`. The "Publish 
 | `llms.txt` | Plain-text summary for AI assistants |
 | `sitemap.xml` | Sitemap for search engines |
 
-Any other file added here is copied to the site root as-is. Pushing to this branch republishes the site.
+Any other file added here is copied to the site root as-is. Pushing to this branch republishes the site: `.github/workflows/republish.yml` starts the publish workflow on `main`.
