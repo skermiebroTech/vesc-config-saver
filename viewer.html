@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>VESC Config Viewer</title>
+<meta name="description" content="Every VESC and Refloat setting explained for beginners: values, defaults, what changed, and practical tips.">
+<meta name="theme-color" content="#3cc79c">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://skermiebrotech.github.io/vesc-config-saver/viewer.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="VESC Config Saver">
+<meta property="og:title" content="VESC Config Viewer">
+<meta property="og:description" content="Every VESC and Refloat setting explained for beginners: values, defaults, what changed, and practical tips.">
+<meta property="og:url" content="https://skermiebrotech.github.io/vesc-config-saver/viewer.html">
+<meta property="og:image" content="https://skermiebrotech.github.io/vesc-config-saver/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="VESC Config Saver: setting cards showing values, defaults and plain-language tips">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="VESC Config Viewer">
+<meta name="twitter:description" content="Every VESC and Refloat setting explained for beginners: values, defaults, what changed, and practical tips.">
+<meta name="twitter:image" content="https://skermiebrotech.github.io/vesc-config-saver/og.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: phone = header then one column of cards; desktop = sticky sidebar (tabs, search, section list) beside a multi-column card grid. */
@@ -170,7 +187,9 @@ if (location.hash === "#last") {
 $("#openother").onclick = () => $("#file").click();
 $("#download").onclick = () => {
   const cfg = state.cfg; if (!cfg) return;
-  const name = `vesc-config-${(cfg.firmware.hw || "vesc").replace(/\W+/g, "_")}-${(cfg.exportedAt || new Date().toISOString()).slice(0, 19).replace(/[:T]/g, "-")}.json`;
+  const safe = s => String(s).trim().replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "");
+  const parts = ["vesc-config", cfg.bluetoothName, cfg.firmware.hw || "vesc"].filter(Boolean).map(safe).filter(Boolean);
+  const name = `${parts.join("-")}-${(cfg.exportedAt || new Date().toISOString()).slice(0, 19).replace(/[:T]/g, "-")}.json`;
   const a = el("a", { href: URL.createObjectURL(new Blob([JSON.stringify(cfg, null, 1)], { type: "application/json" })), download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
@@ -201,7 +220,7 @@ async function load(cfg) {
   if (cfg.appconf?.values) tabs.push({ id: "App", label: "App", values: cfg.appconf.values, def: desc?.appconf });
   if (!tabs.length) throw new Error("no decoded settings in this file");
   state = { cfg, tabs, tab: tabs[0] };
-  $("#meta").textContent = `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
+  $("#meta").textContent = (cfg.bluetoothName ? `${cfg.bluetoothName} · ` : "") + `${fw.hw} · firmware ${ver}` + (cfg.bridge ? ` · via ${cfg.bridge.hw}` : "") + ` · saved ${new Date(cfg.exportedAt).toLocaleString()}` + (desc ? "" : ` · no descriptions for firmware ${ver}, showing values only`);
   $("#tabs").replaceChildren(...tabs.map(t => el("button", { type: "button", textContent: t.label, onclick: () => { state.tab = t; render(); } })));
   $("#tabs").hidden = $("#tools").hidden = $("#download").hidden = $("#openother").hidden = false;
   render();
