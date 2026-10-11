@@ -82,7 +82,7 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
 
 <script>
 // VESC protocol + config decoding (no DOM). Shared by the page and tests.
-const COMM = { FW_VERSION: 0, GET_MCCONF: 14, GET_APPCONF: 17, GET_CUSTOM_CONFIG_XML: 92, GET_CUSTOM_CONFIG: 93 };
+const COMM = { FW_VERSION: 0, GET_MCCONF: 14, GET_APPCONF: 17, GET_CUSTOM_CONFIG_XML: 92, GET_CUSTOM_CONFIG: 93, FORWARD_CAN: 34, PING_CAN: 62 };
 
 function crc16(buf) {
   let crc = 0;
@@ -223,7 +223,9 @@ const reader = new PacketReader(p => {
   if (i >= 0) { const w = waiters.splice(i, 1)[0]; w.resolve(p); }
 });
 
+let canId = null; // set when talking to a controller behind a Bluetooth bridge
 async function send(payload) {
+  if (canId !== null && payload[0] !== COMM.PING_CAN) payload = [COMM.FORWARD_CAN, canId, ...payload];
   const pkt = packPacket(Uint8Array.from(payload));
   for (let i = 0; i < pkt.length; i += 20) await rxChar.writeValueWithoutResponse(pkt.slice(i, i + 20)).catch(() => rxChar.writeValue(pkt.slice(i, i + 20)));
 }
@@ -240,6 +242,15 @@ function request(payload, timeout = 3000, tries = 3) {
     }
     reject(new Error("No reply to command " + payload[0]));
   });
+}
+async function readFw() {
+  const fw = new Reader(await request([COMM.FW_VERSION]), 1);
+  const info = { major: fw.i8(), minor: fw.i8(), hw: fw.str() };
+  if (fw.left() >= 12) { info.uuid = Array.from(fw.b.slice(fw.p, fw.p + 12), b => b.toString(16).padStart(2, "0")).join(""); fw.p += 12; }
+  if (fw.left() >= 2) { fw.u8(); fw.u8(); }
+  info.hwType = fw.left() >= 1 ? fw.u8() : 0;
+  info.customConfigs = fw.left() >= 1 ? fw.u8() : 0;
+  return info;
 }
 const i32 = n => [n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255];
 
@@ -259,11 +270,23 @@ async function run() {
     step("conn", "ok", dev.name || ""); log("Connected to " + (dev.name || "controller"));
 
     step("fw", "run");
-    const fw = new Reader(await request([COMM.FW_VERSION]), 1);
-    const info = { major: fw.i8(), minor: fw.i8(), hw: fw.str() };
-    if (fw.left() >= 12) { info.uuid = Array.from(fw.b.slice(fw.p, fw.p + 12), b => b.toString(16).padStart(2, "0")).join(""); fw.p += 12; }
-    if (fw.left() >= 3) { fw.u8(); fw.u8(); fw.u8(); }
-    info.customConfigs = fw.left() >= 1 ? fw.u8() : 0;
+    canId = null;
+    let info = await readFw();
+    if (info.hwType !== 0) {
+      // Connected to a Bluetooth bridge such as a VESC Express. Find the motor controller on CAN.
+      out.bridge = info;
+      log(`Connected to ${info.hw} (firmware ${info.major}.${String(info.minor).padStart(2, "0")}), a Bluetooth bridge. Looking for the motor controller on CAN...`);
+      const ids = Array.from((await request([COMM.PING_CAN], 6000, 2)).slice(1));
+      log("CAN devices found: " + (ids.join(", ") || "none"));
+      let found = null;
+      for (const id of ids) {
+        canId = id;
+        try { const f = await readFw(); log(`CAN ${id}: ${f.hw} firmware ${f.major}.${String(f.minor).padStart(2, "0")}`); if (f.hwType === 0) { found = f; break; } }
+        catch (e) { log(`CAN ${id}: no reply`); }
+      }
+      if (!found) throw new Error("No motor controller found behind " + info.hw);
+      info = found; info.canId = canId;
+    }
     out.firmware = info;
     const ver = `${info.major}.${String(info.minor).padStart(2, "0")}`;
     step("fw", "ok", `${ver} on ${info.hw}`); log(`Firmware ${ver}, hardware ${info.hw}, package configs: ${info.customConfigs}`);
