@@ -1,0 +1,28 @@
+# VESC Config Saver
+
+> Free, open-source web app that reads the full configuration of a VESC-based electric balance board (DIY Onewheel-style builds) over Bluetooth, explains every setting in plain language, and saves it as one JSON file. Read-only: it never writes to the board.
+
+- Site: https://skermiebrotech.github.io/vesc-config-saver/
+- Config viewer: https://skermiebrotech.github.io/vesc-config-saver/viewer.html
+- Source code: https://github.com/skermiebroTech/vesc-config-saver
+
+## What it reads
+- VESC motor configuration (mcconf) and app configuration (appconf)
+- Package configurations: Refloat, Float, TNT (Trick and Trail), Balance, and any other package that registers a config page
+- Every VESC device on the board's CAN bus, including a VESC Express used as a Bluetooth bridge, and the VESC Express's own settings
+- Firmware 3.55 to 7.01, including the built-in Balance app in firmware 3.62 to 6.02
+
+## Safety and privacy
+- Only read commands are sent (COMM_FW_VERSION, COMM_PING_CAN, COMM_GET_MCCONF, COMM_GET_APPCONF, COMM_GET_CUSTOM_CONFIG_XML, COMM_GET_CUSTOM_CONFIG, wrapped in COMM_FORWARD_CAN for devices on CAN). No write, reboot or firmware commands exist in the code.
+- Passwords and PINs (VESC Express Wi-Fi passwords, Bluetooth PIN, TCP hub password) are replaced with "(hidden)" and never saved.
+- Runs entirely in the browser. Nothing is uploaded.
+
+## Requirements
+- Reading from a board: Chrome on Android, or another Chromium browser with Web Bluetooth (Edge, Opera, Samsung Internet). Not Firefox or iPhone Safari.
+- Viewing a saved file: any modern browser.
+
+## Config viewer
+Shows a card for every setting with its value, a plain-language explanation for beginners, a practical tip, the default value and whether it was changed. About 840 settings have hand-written beginner notes, covering every setting in VESC firmware 3.55 to 7.01, Refloat, Float, TNT, the Balance package and VESC Express.
+
+## Tested hardware
+JetFleet F6 (32s) with a built-in VESC Express, firmware 7.00, Refloat 1.3. Should also work with Thor 300/301/400, Tronic X12, and boards with an added VESC Express or an NRF Bluetooth module.

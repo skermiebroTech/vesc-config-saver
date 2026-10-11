@@ -6,6 +6,9 @@
 <title>VESC Config Viewer</title>
 <meta name="description" content="Every VESC and Refloat setting explained for beginners: values, defaults, what changed, and practical tips.">
 <meta name="theme-color" content="#3cc79c">
+<meta name="robots" content="index, follow">
+<link rel="alternate" type="text/plain" href="llms.txt" title="LLM-readable summary">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "VESC Config Viewer", "url": "https://skermiebrotech.github.io/vesc-config-saver/viewer.html", "description": "Every VESC and Refloat setting explained for beginners: values, defaults, what changed, and practical tips.", "applicationCategory": "UtilitiesApplication", "operatingSystem": "Any browser", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "isAccessibleForFree": true, "codeRepository": "https://github.com/skermiebroTech/vesc-config-saver", "isPartOf": {"@type": "WebSite", "name": "VESC Config Saver", "url": "https://skermiebrotech.github.io/vesc-config-saver/"}, "image": "https://skermiebrotech.github.io/vesc-config-saver/og.png"}</script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://skermiebrotech.github.io/vesc-config-saver/viewer.html">
 <meta property="og:type" content="website">
@@ -45,6 +48,7 @@ header.top { background: var(--bg); padding-top: calc(env(safe-area-inset-top, 0
 .titlerow { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap }
 h1 { font: 700 1.7rem/1.1 var(--display); margin: 0; letter-spacing: .01em }
 .titlerow a { color: var(--accent); font-size: .9rem }
+.links { display: inline-flex; gap: 14px; flex-wrap: wrap }
 .meta { color: var(--muted); font-size: .85rem; margin: 0; font-variant-numeric: tabular-nums }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap }
 .tabs button { font: 700 1rem var(--display); letter-spacing: .03em; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 6px 14px; cursor: pointer }
@@ -119,7 +123,7 @@ body.desk details.section { scroll-margin-top: 12px }
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="titlerow"><h1>VESC Config Viewer</h1><a href="./">Read a config from your board</a></div>
+    <div class="titlerow"><h1>VESC Config Viewer</h1><span class="links"><a href="./">Read a config from your board</a> <a href="https://github.com/skermiebroTech/vesc-config-saver">GitHub</a></span></div>
     <p class="meta" id="meta">Open a file saved with VESC Config Saver to see every setting explained.</p>
     <div class="actions">
       <button class="small-btn solid" type="button" id="download" hidden>Download config</button>

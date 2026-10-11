@@ -6,6 +6,10 @@
 <title>VESC Config Saver</title>
 <meta name="description" content="Read your VESC board's motor, app and Refloat settings over Bluetooth, see every setting explained in plain language, and save them as one file.">
 <meta name="theme-color" content="#3cc79c">
+<meta name="robots" content="index, follow">
+<meta name="keywords" content="VESC, Refloat, Float package, TNT, VESC Express, onewheel, VESC config backup, VESC settings explained, JetFleet F6, Thor 400, VESC Tool">
+<link rel="alternate" type="text/plain" href="llms.txt" title="LLM-readable summary">
+<script type="application/ld+json">[{"@context": "https://schema.org", "@type": "WebApplication", "name": "VESC Config Saver", "url": "https://skermiebrotech.github.io/vesc-config-saver/", "description": "Read a VESC board's motor, app and Refloat settings over Bluetooth, see every setting explained for beginners, and save them as one file.", "applicationCategory": "UtilitiesApplication", "operatingSystem": "Android (Chrome), any browser for the viewer", "browserRequirements": "Requires Web Bluetooth (Chrome on Android)", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "isAccessibleForFree": true, "codeRepository": "https://github.com/skermiebroTech/vesc-config-saver", "sameAs": ["https://github.com/skermiebroTech/vesc-config-saver"], "featureList": ["Read VESC motor and app configuration over Bluetooth", "Read Refloat, Float, TNT and Balance package settings", "Works through a VESC Express over CAN", "Firmware 3.55 to 7.01", "Beginner explanations for every setting", "Passwords and PINs never saved", "Read-only: never writes to the board"], "image": "https://skermiebrotech.github.io/vesc-config-saver/og.png"}, {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What does VESC Config Saver do?", "acceptedAnswer": {"@type": "Answer", "text": "It connects to a VESC-based board over Bluetooth, reads the motor config, app config and every package config (Refloat, Float, TNT, Balance and others) from every VESC device on the board's CAN bus, and opens them in a config viewer. There you can download everything as one JSON file."}}, {"@type": "Question", "name": "Can it change the settings on my board?", "acceptedAnswer": {"@type": "Answer", "text": "No. It only sends read commands: firmware version, CAN scan, read motor config, read app config and read package config. The commands that write settings are not in the code. The source is on GitHub if you want to check."}}, {"@type": "Question", "name": "Which boards and controllers does it work with?", "acceptedAnswer": {"@type": "Answer", "text": "Any VESC controller reachable over Bluetooth, either through a VESC Express (for example JetFleet F6, Thor 300/301/400, Tronic X12, or kits with an added Express) or through an NRF Bluetooth module. It has been tested on a JetFleet F6 with a VESC Express."}}, {"@type": "Question", "name": "Which firmware versions are supported?", "acceptedAnswer": {"@type": "Answer", "text": "Every VESC firmware release from 3.55 to 7.01, including the built-in Balance app in firmware 3.62 to 6.02. Package settings are readable on any version because the controller sends their definitions."}}, {"@type": "Question", "name": "Which packages are supported?", "acceptedAnswer": {"@type": "Answer", "text": "Refloat, Float, TNT (Trick and Trail), the Balance package and any other package that registers a config page, on any device on the CAN bus. VESC Express settings are read too."}}, {"@type": "Question", "name": "Does it save my Wi-Fi password or Bluetooth PIN?", "acceptedAnswer": {"@type": "Answer", "text": "No. Passwords and PINs, such as a VESC Express's Wi-Fi password and Bluetooth PIN, are replaced with \"(hidden)\" and never saved."}}, {"@type": "Question", "name": "Which browsers work?", "acceptedAnswer": {"@type": "Answer", "text": "Chrome on Android, and other Chromium browsers such as Edge, Opera and Samsung Internet. Firefox and iPhone Safari do not support Web Bluetooth. The config viewer works in any browser."}}, {"@type": "Question", "name": "What does the config viewer show?", "acceptedAnswer": {"@type": "Answer", "text": "A card for every setting with its value, a plain-language explanation for beginners, a practical tip, and whether it was changed from the default. It has search, a filter for changed settings, and a desktop layout."}}]}]</script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://skermiebrotech.github.io/vesc-config-saver/">
 <meta property="og:type" content="website">
@@ -64,6 +68,14 @@ dt { color: var(--muted); min-width: 0 } dd { margin: 0; font-family: var(--mono
 #log { font: .78rem/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 14rem; overflow: auto; margin: 0 }
 .err { color: var(--bad) }
 p.small { font-size: .85rem; color: var(--muted); margin: 0 }
+.about p { margin: 0; font-size: .95rem }
+.faq { display: grid; gap: 6px }
+.faq details { border-top: 1px solid var(--line); padding-top: 8px }
+.faq summary { cursor: pointer; font-weight: 500 }
+.faq details p { margin-top: 6px; color: var(--muted) }
+.foot { display: flex; gap: 18px; flex-wrap: wrap; font-size: .9rem }
+.foot a, .about a { color: var(--accent) }
+summary:focus-visible, .foot a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
 </style>
 </head>
 <body>
@@ -91,6 +103,26 @@ p.small { font-size: .85rem; color: var(--muted); margin: 0 }
   </section>
 
   <p class="small">Read-only: this page never writes anything to the controller. The downloaded file includes the raw config data, so it could be restored later with a tool that can write it back.</p>
+
+  <section class="about" aria-labelledby="about-h">
+    <h2 id="about-h">About</h2>
+    <p>VESC Config Saver backs up and explains the settings on VESC-based balance boards (DIY Onewheel-style builds). It reads the motor config, app config and package configs such as Refloat, Float and TNT, from the controller and from every other VESC device on the board's CAN bus, like a VESC Express. It works with every VESC firmware release from 3.55 to 7.01.</p>
+    <div class="faq">
+      <details><summary>What does VESC Config Saver do?</summary><p>It connects to a VESC-based board over Bluetooth, reads the motor config, app config and every package config (Refloat, Float, TNT, Balance and others) from every VESC device on the board&#x27;s CAN bus, and opens them in a config viewer. There you can download everything as one JSON file.</p></details>
+      <details><summary>Can it change the settings on my board?</summary><p>No. It only sends read commands: firmware version, CAN scan, read motor config, read app config and read package config. The commands that write settings are not in the code. The source is on GitHub if you want to check.</p></details>
+      <details><summary>Which boards and controllers does it work with?</summary><p>Any VESC controller reachable over Bluetooth, either through a VESC Express (for example JetFleet F6, Thor 300/301/400, Tronic X12, or kits with an added Express) or through an NRF Bluetooth module. It has been tested on a JetFleet F6 with a VESC Express.</p></details>
+      <details><summary>Which firmware versions are supported?</summary><p>Every VESC firmware release from 3.55 to 7.01, including the built-in Balance app in firmware 3.62 to 6.02. Package settings are readable on any version because the controller sends their definitions.</p></details>
+      <details><summary>Which packages are supported?</summary><p>Refloat, Float, TNT (Trick and Trail), the Balance package and any other package that registers a config page, on any device on the CAN bus. VESC Express settings are read too.</p></details>
+      <details><summary>Does it save my Wi-Fi password or Bluetooth PIN?</summary><p>No. Passwords and PINs, such as a VESC Express&#x27;s Wi-Fi password and Bluetooth PIN, are replaced with &quot;(hidden)&quot; and never saved.</p></details>
+      <details><summary>Which browsers work?</summary><p>Chrome on Android, and other Chromium browsers such as Edge, Opera and Samsung Internet. Firefox and iPhone Safari do not support Web Bluetooth. The config viewer works in any browser.</p></details>
+      <details><summary>What does the config viewer show?</summary><p>A card for every setting with its value, a plain-language explanation for beginners, a practical tip, and whether it was changed from the default. It has search, a filter for changed settings, and a desktop layout.</p></details>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <a href="viewer.html">Config viewer</a>
+    <a href="https://github.com/skermiebroTech/vesc-config-saver">Source code on GitHub</a>
+  </footer>
 </main>
 
 <script src="core.js?v=3"></script>
