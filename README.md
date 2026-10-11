@@ -33,3 +33,7 @@ Readable motor and app values work for every VESC firmware release from 3.55 to 
 ## Hosting
 
 Settings → Pages → Deploy from a branch → `main`, folder `/ (root)`.
+
+## Publishing
+
+The site is published by the "Publish site" workflow (`.github/workflows/pages.yml`), not straight from a branch. It takes the app from `main` and adds the search and social files from the `seo` branch (tags, structured data, the About section, the preview image, `llms.txt` and the sitemap) at the `<!-- seo:head -->` and `<!-- seo:about -->` markers. Pushing to either branch republishes the site.

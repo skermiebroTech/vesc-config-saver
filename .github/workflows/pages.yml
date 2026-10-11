@@ -1,0 +1,59 @@
+# Publishes the site: the app from main, plus the SEO files from the seo branch.
+name: Publish site
+
+on:
+  push:
+    branches: [main, seo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: app
+      - uses: actions/checkout@v4
+        with:
+          ref: seo
+          path: seo
+      - name: Combine app and SEO files
+        run: |
+          mkdir _site
+          cp -r app/. _site/
+          rm -rf _site/.git _site/.github
+          python3 - <<'PY'
+          from pathlib import Path
+          seo = Path("seo")
+          for page, head in [("index.html", "head-index.html"), ("viewer.html", "head-viewer.html")]:
+              p = Path("_site", page)
+              html = p.read_text()
+              html = html.replace("<!-- seo:head -->", (seo / head).read_text().rstrip("\n"))
+              about = seo / "about-index.html"
+              if page == "index.html" and about.exists():
+                  html = html.replace("  <!-- seo:about -->\n", about.read_text())
+              p.write_text(html)
+          PY
+          for f in seo/*; do
+            case "$(basename "$f")" in head-*.html|about-*.html|README.md) ;; *) cp "$f" _site/ ;; esac
+          done
+          ls -la _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
