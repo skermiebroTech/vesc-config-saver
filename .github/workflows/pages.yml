@@ -30,6 +30,13 @@ jobs:
         with:
           ref: seo
           path: seo
+      - name: Check main has no SEO tags of its own
+        run: |
+          # SEO tags live on the seo branch. A page on main with its own copy would publish stale tags.
+          if grep -l 'property="og:\|application/ld+json\|class="about"' app/*.html; then
+            echo "::error::The pages above contain SEO tags. Replace them with <!-- seo:head --> / <!-- seo:about --> and keep the tags on the seo branch."
+            exit 1
+          fi
       - name: Combine app and SEO files
         run: |
           mkdir _site
