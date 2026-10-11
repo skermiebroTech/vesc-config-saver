@@ -38,8 +38,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           seo = Path("seo")
-          for page, head in [("index.html", "head-index.html"), ("viewer.html", "head-viewer.html")]:
-              p = Path("_site", page)
+          for p in Path("_site").glob("*.html"):
+              page, head = p.name, "head-" + p.name
+              if not (seo / head).exists():
+                  continue
               html = p.read_text()
               html = html.replace("<!-- seo:head -->", (seo / head).read_text().rstrip("\n"))
               about = seo / "about-index.html"

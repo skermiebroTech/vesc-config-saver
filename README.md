@@ -12,6 +12,15 @@ For each part the file holds the raw config data (the same bytes VESC Tool reads
 
 The page only reads from the controller. It never changes settings.
 
+## Ride logger
+
+`logger.html` records ride data in two ways and shows it on synced charts with an event list (disengages and their reason, pushbacks, wheel slip, alerts), with CSV export:
+
+- **Live log** over Bluetooth, about 10–30 samples a second. With Refloat it uses Refloat's realtime data (speed, duty, currents, voltage, temperatures, pitch, roll, setpoints, foot sensors and package state). Without Refloat it uses the standard VESC values and IMU angles. The screen has to stay on, so the page keeps it awake.
+- **Refloat's on-board data recording**: a few seconds at the full balance-loop rate, recorded inside the controller. Needs firmware with the recording buffer (Refloat Extras). Downloading it pauses the recording, as Refloat's own screen does; it restarts on the next engage.
+
+Live logs are saved in the browser every few seconds, so a log can be recovered if the page closes.
+
 ## Config viewer
 
 `viewer.html` shows a card for every setting: its value, a plain-language note on what it means, a practical tip, and whether it has been changed from the default. Settings are grouped the same way as in VESC Tool, with search and a filter for changed settings. Sections a balance board doesn't use (BLDC, DC, PPM, PAS and so on) are hidden unless you ask for them.

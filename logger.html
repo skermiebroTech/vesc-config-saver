@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VESC Logger</title>
+<meta name="description" content="Log your VESC board's ride data over Bluetooth, or download Refloat's on-board data recording, and see it on synced charts with a CSV export.">
+<meta name="theme-color" content="#3cc79c">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!-- seo:head -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<style>
+/* Layout: connect and capture controls in a narrow column, then full-width synced charts with an event list beside them on desktop. */
+:root {
+  --bg: #f3f5f4; --surface: #ffffff; --fg: #17201d; --muted: #5d6a65; --line: #d5ddd9;
+  --accent: #0d7c5f; --accent-fg: #ffffff; --accent-soft: #e2f2ec; --warn: #8a4a00; --warn-soft: #fbefdc; --bad: #b3261e;
+  --s1: #0d7c5f; --s2: #c2410c; --s3: #2563eb; --s4: #9333ea; --s5: #b45309; --s6: #0891b2;
+  --display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1513; --surface: #17201d; --fg: #e4ece8; --muted: #93a39c; --line: #2a3632;
+  --accent: #3cc79c; --accent-fg: #06130f; --accent-soft: #163a2f; --warn: #f0a050; --warn-soft: #3a2a14; --bad: #ff8a80;
+  --s1: #3cc79c; --s2: #fb923c; --s3: #60a5fa; --s4: #c084fc; --s5: #fbbf24; --s6: #22d3ee; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1513; --surface: #17201d; --fg: #e4ece8; --muted: #93a39c; --line: #2a3632;
+  --accent: #3cc79c; --accent-fg: #06130f; --accent-soft: #163a2f; --warn: #f0a050; --warn-soft: #3a2a14; --bad: #ff8a80;
+  --s1: #3cc79c; --s2: #fb923c; --s3: #60a5fa; --s4: #c084fc; --s5: #fbbf24; --s6: #22d3ee; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--body); padding: 0 16px env(safe-area-inset-bottom, 0px) }
+.wrap { max-width: 34rem; margin: 0 auto; padding-block: calc(env(safe-area-inset-top, 0px) + 22px) 48px; display: grid; gap: 18px }
+.wide { max-width: 96rem; margin: 0 auto; padding-bottom: 48px; display: grid; gap: 14px }
+h1 { font: 700 2rem/1.1 var(--display); margin: 0; letter-spacing: .01em }
+.sub { color: var(--muted); margin: 6px 0 0 }
+.links { display: flex; gap: 16px; flex-wrap: wrap; font-size: .9rem; margin-top: 8px }
+a { color: var(--accent) }
+h2 { font: 700 .8rem var(--display); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 }
+section.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; min-width: 0 }
+.btn { font: 700 1.1rem var(--display); letter-spacing: .03em; border: 0; border-radius: 10px; padding: 14px; width: 100%; background: var(--accent); color: var(--accent-fg); cursor: pointer }
+.btn.alt { background: transparent; color: var(--accent); border: 1px solid var(--accent) }
+.btn.stop { background: var(--bad); color: #fff }
+.btn:disabled { opacity: .45; cursor: default }
+.btn:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px }
+.row { display: flex; gap: 10px; flex-wrap: wrap }
+.row > * { flex: 1 1 10rem }
+p { margin: 0 }
+.muted { color: var(--muted); font-size: .9rem }
+.status { font-size: .95rem }
+.err { color: var(--bad) }
+.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: 8px }
+.ro { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px }
+.ro span { display: block; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.ro b { font: 500 1.3rem var(--mono); font-variant-numeric: tabular-nums }
+.progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s }
+details.log summary { cursor: pointer; color: var(--muted); font-size: .9rem }
+#log { font: .78rem/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 14rem; overflow: auto; margin: 8px 0 0 }
+
+/* Results */
+.reshead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 18px }
+.reshead h2 { font: 700 1.5rem var(--display); text-transform: none; letter-spacing: .01em; color: var(--fg) }
+.reshead .row > * { flex: 0 0 auto }
+.small-btn { font: 600 .9rem var(--body); border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer }
+.small-btn.solid { background: var(--accent); color: var(--accent-fg) }
+.layout { display: grid; gap: 14px }
+@media (min-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr) 18rem; align-items: start } .events { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto } }
+.charts { display: grid; gap: 10px; min-width: 0 }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 4px; min-width: 0 }
+.panel h3 { font: 600 .9rem var(--body); margin: 0 0 4px 4px }
+.events { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 4px; align-content: start }
+.events h3 { font: 700 .8rem var(--display); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 6px }
+.ev { display: grid; grid-template-columns: 4.2rem 1fr; gap: 8px; text-align: left; font: inherit; font-size: .88rem; background: none; border: 0; border-left: 3px solid var(--line); padding: 4px 8px; cursor: pointer; color: var(--fg) }
+.ev:hover { background: var(--accent-soft) }
+.ev.stop { border-left-color: var(--bad) }
+.ev.pb { border-left-color: var(--warn) }
+.ev.info { border-left-color: var(--accent) }
+.ev time { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
+.u-legend { font-size: .8rem } .u-legend .u-marker { border-radius: 2px }
+.uplot, .u-title { color: var(--fg); font-family: var(--body) }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>VESC Logger</h1>
+    <p class="sub">Log ride data from your board over Bluetooth, or download Refloat's on-board data recording. See it on synced charts and export it as CSV.</p>
+    <div class="links"><a href="./">Config saver</a><a href="viewer.html">Config viewer</a><a href="https://github.com/skermiebroTech/vesc-config-saver">GitHub</a></div>
+  </header>
+
+  <section class="card">
+    <h2>Board</h2>
+    <button class="btn" id="connect" type="button">Connect to board</button>
+    <p class="status" id="status">Not connected. Close VESC Tool and other board apps first; only one app can connect at a time.</p>
+    <p class="muted" id="support"></p>
+  </section>
+
+  <section class="card" id="liveCard">
+    <h2>Live log</h2>
+    <p class="muted">Records while you ride, about 10–30 times a second over Bluetooth. Keep the screen on and this page open; Android drops Bluetooth when the screen turns off.</p>
+    <button class="btn" id="live" type="button" disabled>Start live log</button>
+    <div class="readouts" id="readouts" hidden>
+      <div class="ro"><span>Speed</span><b id="r-speed">–</b></div>
+      <div class="ro"><span>Duty</span><b id="r-duty">–</b></div>
+      <div class="ro"><span>Battery</span><b id="r-volt">–</b></div>
+      <div class="ro"><span>Motor</span><b id="r-amp">–</b></div>
+      <div class="ro"><span>Pitch</span><b id="r-pitch">–</b></div>
+      <div class="ro"><span>Logged</span><b id="r-count">0</b></div>
+      <div class="ro"><span>Rate</span><b id="r-rate">–</b></div>
+    </div>
+  </section>
+
+  <section class="card" id="recCard">
+    <h2>Refloat on-board recording</h2>
+    <p class="muted">Refloat can record a few seconds at full loop speed inside the controller, with no Bluetooth dropouts. It records each time you ride and stops when you step off, so after a nosedive it holds the moment it happened. Needs firmware with data recording (Refloat Extras).</p>
+    <button class="btn alt" id="fetch" type="button" disabled>Download recording</button>
+    <div class="progress" id="prog" hidden><i></i></div>
+    <p class="muted" id="recStatus"></p>
+  </section>
+
+  <section class="card">
+    <h2>Saved logs</h2>
+    <div class="row">
+      <button class="btn alt" id="open" type="button">Open a log file</button>
+      <button class="btn alt" id="recover" type="button" hidden>Recover unsaved live log</button>
+    </div>
+    <input type="file" id="file" accept=".json,application/json" hidden>
+    <p class="muted">Read-only: the logger only asks the board for data. Downloading Refloat's recording pauses it, the same as Refloat's own screen does; it starts again next time you engage.</p>
+  </section>
+
+  <details class="log"><summary>Connection log</summary><pre id="log">Waiting.</pre></details>
+</div>
+
+<div class="wide" id="results" hidden>
+  <div class="reshead">
+    <div><h2 id="resTitle">Log</h2><p class="muted" id="resMeta"></p></div>
+    <div class="row">
+      <button class="small-btn" type="button" id="resetZoom">Show all</button>
+      <button class="small-btn" type="button" id="dlCsv">Download CSV</button>
+      <button class="small-btn solid" type="button" id="dlJson">Download log</button>
+    </div>
+  </div>
+  <div class="layout">
+    <div class="charts" id="charts"></div>
+    <aside class="events" id="events"></aside>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<script src="core.js?v=3"></script>
+<script src="ble.js?v=1"></script>
+<script>
+const $ = s => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter(k => k != null && k !== "")); return e; };
+const logEl = $("#log");
+const log = (msg, cls) => { const s = el("span", { className: cls || "", textContent: "\n" + msg }); logEl.append(s); logEl.scrollTop = logEl.scrollHeight; };
+const setStatus = (msg, bad) => { $("#status").textContent = msg; $("#status").classList.toggle("err", !!bad); };
+
+if (!navigator.bluetooth) {
+  $("#connect").disabled = true;
+  $("#support").textContent = "This browser has no Bluetooth access. Use Chrome on Android to connect. You can still open saved logs.";
+}
+
+// ---------- Refloat package protocol (COMM_CUSTOM_APP_DATA, package id 101) ----------
+const PKG = 101, CUSTOM = 36;
+const pkgMatch = id => p => p[0] === CUSTOM && p[1] === PKG && p[2] === id;
+const u32 = n => [n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255];
+
+// Refloat's float16 (IEEE-754 half without NaN/Inf), from its documentation.
+function f16(number) {
+  const e = (number & 0x7C00) >> 10, m16 = number & 0x03FF, m = m16 << 13;
+  const v = m16 > 0 ? 140 + Math.floor(Math.log2(m16)) : 0;
+  const r = (number & 0x8000) << 16 | (e != 0) * ((e + 112) << 23 | m) | ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000));
+  return new Float32Array(new Uint32Array([r]).buffer)[0];
+}
+
+const SAT = { 0: "", 1: "Centering", 2: "Reverse stop", 6: "Duty pushback", 10: "High voltage pushback", 11: "Low voltage pushback", 12: "Temperature pushback" };
+const STOP = { 0: "", 1: "tilted too far (pitch)", 2: "tilted too far (roll)", 3: "heel lift (half foot sensor)", 4: "both feet off", 5: "reverse stop", 6: "quick stop" };
+const STATE = { 0: "Disabled", 1: "Startup", 2: "Ready", 3: "Running" };
+const BEEP = { 1: "low voltage", 2: "high voltage", 3: "controller temperature", 4: "motor temperature", 5: "current", 6: "duty", 7: "sensors", 8: "low battery", 9: "idle", 10: "error" };
+const FAULTS = ["NONE", "OVER_VOLTAGE", "UNDER_VOLTAGE", "DRV", "ABS_OVER_CURRENT", "OVER_TEMP_FET", "OVER_TEMP_MOTOR", "GATE_DRIVER_OVER_VOLTAGE", "GATE_DRIVER_UNDER_VOLTAGE", "MCU_UNDER_VOLTAGE", "BOOTING_FROM_WATCHDOG_RESET", "ENCODER_SPI", "ENCODER_SINCOS_BELOW_MIN_AMPLITUDE", "ENCODER_SINCOS_ABOVE_MAX_AMPLITUDE", "FLASH_CORRUPTION", "HIGH_OFFSET_CURRENT_SENSOR_1", "HIGH_OFFSET_CURRENT_SENSOR_2", "HIGH_OFFSET_CURRENT_SENSOR_3", "UNBALANCED_CURRENTS", "BRK", "RESOLVER_LOT", "RESOLVER_DOS", "RESOLVER_LOS", "FLASH_CORRUPTION_APP_CFG", "FLASH_CORRUPTION_MC_CFG", "ENCODER_NO_MAGNET", "ENCODER_MAGNET_TOO_STRONG", "PHASE_FILTER", "ENCODER_FAULT", "LV_OUTPUT_FAULT"];
+
+// Live data fields requested from Refloat's REALTIME_DATA (mask1 bit -> column).
+const RT1 = [[6, "speed_kmh"], [7, "erpm"], [8, "motor_current_a"], [10, "filtered_current_a"], [11, "duty_pct"], [12, "battery_v"], [13, "battery_current_a"],
+  [14, "battery_pct"], [15, "controller_temp_c"], [16, "motor_temp_c"], [17, "pitch_deg"], [18, "balance_pitch_deg"], [19, "roll_deg"], [20, "footpad_left_v"],
+  [21, "footpad_right_v"], [23, "setpoint_deg"], [24, "atr_setpoint_deg"], [25, "brake_tilt_setpoint_deg"], [26, "torque_tilt_setpoint_deg"],
+  [27, "turn_tilt_setpoint_deg"], [28, "remote_setpoint_deg"], [29, "balance_current_a"], [30, "loop_hz"]];
+const RT2 = [[1, "distance_m"], [4, "amp_hours"], [6, "watt_hours"]];
+const MASK1 = RT1.reduce((m, [b]) => m | (1 << b), 1 | 2) >>> 0, MASK2 = RT2.reduce((m, [b]) => m | (1 << b), 0) >>> 0;
+const PCT = new Set(["duty_pct", "battery_pct"]);
+// Refloat's recorded value IDs -> the same column names and units as the live log.
+const REC = { "speed": ["speed_kmh", 1], "erpm": ["erpm", 1], "current": ["motor_current_a", 1], "dir_current": ["dir_current_a", 1], "filt_current": ["filtered_current_a", 1],
+  "duty_cycle": ["duty_pct", 100], "batt_voltage": ["battery_v", 1], "batt_current": ["battery_current_a", 1], "mosfet_temp": ["controller_temp_c", 1], "motor_temp": ["motor_temp_c", 1],
+  "pitch": ["pitch_deg", 1], "balance_pitch": ["balance_pitch_deg", 1], "roll": ["roll_deg", 1], "adc_left": ["footpad_left_v", 1], "adc_right": ["footpad_right_v", 1],
+  "setpoint": ["setpoint_deg", 1], "atr.setpoint": ["atr_setpoint_deg", 1], "brake_tilt.setpoint": ["brake_tilt_setpoint_deg", 1], "torque_tilt.setpoint": ["torque_tilt_setpoint_deg", 1],
+  "turn_tilt.setpoint": ["turn_tilt_setpoint_deg", 1], "remote.setpoint": ["remote_setpoint_deg", 1], "balance_current": ["balance_current_a", 1], "control.freq": ["loop_hz", 1] };
+
+// ---------- Connection ----------
+const link = new VescLink();
+let board = null; // { name, ctrl, refloat: {version, tickRate, recording} }
+
+$("#connect").onclick = async () => {
+  $("#connect").disabled = true; logEl.textContent = "Connecting.";
+  try {
+    setStatus("Connecting…");
+    const dev = await link.connect();
+    const { ctrl } = await link.discover(log);
+    board = { name: dev.name || "", ctrl: ctrl.info, refloat: null };
+    let rf = null;
+    try {
+      const p = new Reader(await link.request([CUSTOM, PKG, 0, 2, 0], { match: pkgMatch(0), timeout: 1500, tries: 2 }), 3);
+      const ver = p.u8();
+      if (ver >= 2 && ver <= 10) {
+        p.u8();
+        const name = new TextDecoder().decode(p.b.slice(p.p, p.p + 20)).replace(/\0.*$/s, ""); p.p += 20;
+        const v = [p.u8(), p.u8(), p.u8()]; p.p += 20 + 4;
+        rf = { name, version: v.join("."), tickRate: p.u32(), capabilities: p.u32() >>> 0 };
+      } else rf = { name: "Refloat or Float", version: "unknown", tickRate: 10000, capabilities: 0 };
+    } catch (e) { log("No Refloat package found. Live logging will use the standard VESC values."); }
+    board.refloat = rf;
+    setStatus(`Connected to ${board.name || ctrl.info.hw}: ${ctrl.info.hw}, firmware ${fwVersion(ctrl.info)}` + (rf ? `, ${rf.name} ${rf.version}` : ", no Refloat package"));
+    $("#live").disabled = false;
+    await checkRecording();
+  } catch (e) {
+    setStatus("Couldn't connect: " + e.message, true); log("Stopped: " + e.message, "err");
+    $("#connect").disabled = false;
+  }
+};
+
+async function checkRecording() {
+  const rf = board.refloat;
+  if (!rf) { $("#recStatus").textContent = "Needs the Refloat package."; return; }
+  try {
+    const p = new Reader(await link.request([CUSTOM, PKG, 41, 1, 0], { match: pkgMatch(41), timeout: 1500, tries: 2 }), 3);
+    const enabled = p.u8(), flags = p.u8(), dec = p.u8(), dur = p.u16();
+    if (!enabled) throw new Error("not enabled");
+    rf.recording = true;
+    $("#fetch").disabled = false;
+    $("#recStatus").textContent = `Available. Holds about ${(dur / 100).toFixed(1)} s` + (dec > 1 ? ` (every ${dec}${dec === 2 ? "nd" : dec === 3 ? "rd" : "th"} sample)` : "") + `. ${flags & 1 ? "Recording now." : "Not recording right now."} Starts when you engage: ${flags & 2 ? "yes" : "no"}, stops when you step off: ${flags & 4 ? "yes" : "no"}.`;
+  } catch (e) {
+    $("#recStatus").textContent = (rf.capabilities & 0x80000000) ? "Refloat reports data recording, but it didn't answer the status request." :
+      "Not available on this board's firmware. Standard VESC firmware has no recording buffer; it needs Refloat Extras firmware.";
+  }
+}
+
+// ---------- Live log ----------
+let live = null, wakeLock = null;
+async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (live && document.visibilityState === "visible") keepAwake(); });
+
+$("#live").onclick = () => live ? stopLive() : startLive();
+
+async function startLive() {
+  const rf = board.refloat;
+  const cols = rf ? ["state", "footpad", "pushback", "stop_reason", "wheelslip", ...RT1.map(c => c[1]), ...RT2.map(c => c[1])]
+    : ["controller_temp_c", "motor_temp_c", "motor_current_a", "battery_current_a", "duty_pct", "erpm", "battery_v", "fault", "roll_deg", "pitch_deg", "yaw_deg"];
+  live = { source: "live", started: new Date().toISOString(), columns: ["time_s", ...cols], rows: [], t0: null, last: {}, events: [], useRefloat: !!rf, failures: 0 };
+  $("#live").textContent = "Stop live log"; $("#live").classList.add("stop");
+  $("#readouts").hidden = false; $("#fetch").disabled = true;
+  await keepAwake();
+  log("Live log started" + (rf ? " (Refloat live data)" : " (standard VESC values)"));
+  const save = setInterval(() => idbSet("live", logData(live)), 5000);
+  let rateT = performance.now(), rateN = 0;
+  while (live) {
+    const t = performance.now();
+    try {
+      const row = live.useRefloat ? await sampleRefloat(rf) : await sampleGeneric();
+      if (!live) break;
+      live.failures = 0;
+      live.rows.push(row);
+      noteEvents(live, row);
+      rateN++;
+      if (t - rateT > 1000) { $("#r-rate").textContent = (rateN * 1000 / (t - rateT)).toFixed(0) + " Hz"; rateT = t; rateN = 0; }
+      showReadouts(row);
+    } catch (e) {
+      if (!live) break;
+      live.failures++;
+      if (live.failures === 1) live.events.push({ t: live.rows.length ? live.rows[live.rows.length - 1][0] : 0, kind: "info", text: "Bluetooth dropout" });
+      if (live.failures > 20) { log("Lost the connection to the board.", "err"); setStatus("Connection lost. The log so far is kept.", true); stopLive(); break; }
+    }
+    const wait = 30 - (performance.now() - t); // at most about 33 samples a second
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  }
+  clearInterval(save);
+}
+
+function stopLive() {
+  if (!live) return;
+  const data = logData(live); live = null;
+  try { wakeLock?.release(); } catch (e) {}
+  $("#live").textContent = "Start live log"; $("#live").classList.remove("stop");
+  $("#fetch").disabled = !board?.refloat?.recording;
+  idbSet("live", data);
+  log(`Live log stopped: ${data.rows.length} samples.`);
+  if (data.rows.length) showLog(data);
+}
+
+async function sampleRefloat(rf) {
+  const p = await link.request([CUSTOM, PKG, 33, 1, ...u32(MASK1), ...u32(MASK2)], { match: pkgMatch(33), timeout: 800, tries: 1 });
+  const r = new Reader(p, 3); r.u8(); r.u32(); r.u32();
+  const ticks = r.u32();
+  if (live.t0 === null) live.t0 = ticks;
+  const t = ((ticks - live.t0) >>> 0) / (rf.tickRate || 10000);
+  r.u8(); // extra flags
+  const sf = r.u32() >>> 0;
+  const row = [t, STATE[(sf >> 24) & 3], (sf >> 22) & 3, SAT[(sf >> 12) & 15] ?? String((sf >> 12) & 15), STOP[(sf >> 8) & 15] ?? String((sf >> 8) & 15), (sf >> 16) & 1];
+  for (const [, name] of RT1) { const v = r.f32auto(); row.push(PCT.has(name) ? v * 100 : v); }
+  for (const [, name] of RT2) row.push(r.f32auto());
+  row.beep = BEEP[sf & 255] || "";
+  return row;
+}
+
+async function sampleGeneric() {
+  const v = new Reader(await link.request([50, ...u32(0x81CF)], { timeout: 800, tries: 1 }), 5);
+  const f = [v.i16() / 10, v.i16() / 10, v.i32() / 100, v.i32() / 100, v.i16() / 10, v.i32(), v.i16() / 10, FAULTS[v.u8()] || "UNKNOWN"];
+  const im = new Reader(await link.request([65, 0, 7], { timeout: 800, tries: 1 }), 3);
+  const imu = [im.f32auto(), im.f32auto(), im.f32auto()];
+  if (live.t0 === null) live.t0 = performance.now();
+  return [(performance.now() - live.t0) / 1000, ...f, ...imu];
+}
+
+function noteEvents(L, row) {
+  const c = L.columns, get = n => row[c.indexOf(n)], t = row[0], prev = L.last;
+  if (L.useRefloat) {
+    const st = get("state"), pb = get("pushback"), ws = get("wheelslip");
+    if (prev.state === "Running" && st !== "Running") L.events.push({ t, kind: "stop", text: "Disengaged" + (get("stop_reason") ? ": " + get("stop_reason") : "") });
+    if (prev.state && prev.state !== "Running" && st === "Running") L.events.push({ t, kind: "info", text: "Engaged" });
+    if (pb && pb !== prev.pb && pb !== "Centering") L.events.push({ t, kind: "pb", text: pb });
+    if (ws && !prev.ws) L.events.push({ t, kind: "pb", text: "Wheel slip" });
+    if (row.beep && row.beep !== prev.beep) L.events.push({ t, kind: "pb", text: "Alert: " + row.beep });
+    L.last = { state: st, pb, ws, beep: row.beep };
+  } else {
+    const f = get("fault");
+    if (f !== "NONE" && f !== prev.f) L.events.push({ t, kind: "stop", text: "Fault: " + f });
+    L.last = { f };
+  }
+}
+
+function showReadouts(row) {
+  const c = live.columns, g = n => row[c.indexOf(n)];
+  const fmt = (v, d, u) => v == null || isNaN(v) ? "–" : v.toFixed(d) + u;
+  $("#r-speed").textContent = fmt(g("speed_kmh") ?? null, 1, " km/h");
+  $("#r-duty").textContent = fmt(g("duty_pct"), 0, "%");
+  $("#r-volt").textContent = fmt(g("battery_v"), 1, "V");
+  $("#r-amp").textContent = fmt(g("motor_current_a"), 0, "A");
+  $("#r-pitch").textContent = fmt(g("pitch_deg"), 1, "°");
+  $("#r-count").textContent = live.rows.length;
+}
+
+const logData = L => ({ format: "vesc-log/1", source: L.source, started: L.started, board: board && { bluetoothName: board.name, hw: board.ctrl.hw, firmware: fwVersion(board.ctrl), package: board.refloat && `${board.refloat.name} ${board.refloat.version}` }, columns: L.columns, rows: L.rows.map(r => [...r]), events: L.events });
+
+// ---------- Refloat recording ----------
+$("#fetch").onclick = async () => {
+  const rf = board.refloat, bar = $("#prog"), fill = bar.firstElementChild;
+  $("#fetch").disabled = true; bar.hidden = false; fill.style.width = "0";
+  try {
+    const h = new Reader(await link.request([CUSTOM, PKG, 41, 2, 1], { match: pkgMatch(42), timeout: 2500, tries: 2 }), 3);
+    const size = h.u32(), n = h.u8(), ids = [];
+    for (let i = 0; i < n; i++) { const len = h.u8(); ids.push(new TextDecoder().decode(h.b.slice(h.p, h.p + len))); h.p += len; }
+    log(`Recording: ${size} samples of ${n} values`);
+    if (!size) { $("#recStatus").textContent = "The recording is empty. Ride (engage the board) first, then download."; return; }
+    const rows = [];
+    let t0 = null;
+    while (rows.length < size) {
+      const p = await link.request([CUSTOM, PKG, 41, 2, 2, ...u32(rows.length)], { match: pkgMatch(43), timeout: 2500, tries: 3 });
+      const r = new Reader(p, 3);
+      if (r.u32() !== rows.length) continue;
+      const before = rows.length;
+      while (r.left() >= 5 + 2 * n && rows.length < size) {
+        const ticks = r.u32(), fl = r.u8();
+        if (t0 === null) t0 = ticks;
+        const row = [((ticks - t0) >>> 0) / (rf.tickRate || 10000), fl & 1 ? "Running" : "Stopped", (fl >> 2) & 3, SAT[fl >> 4] ?? String(fl >> 4), fl >> 1 & 1];
+        for (let i = 0; i < n; i++) row.push(f16(r.u16()) * (REC[ids[i]]?.[1] || 1));
+        rows.push(row);
+      }
+      if (rows.length === before) throw new Error("The board sent no samples");
+      fill.style.width = (100 * rows.length / size).toFixed(0) + "%";
+    }
+    const data = { format: "vesc-log/1", source: "recording", started: new Date().toISOString(), board: logData({ columns: [], rows: [], events: [] }).board,
+      columns: ["time_s", "state", "footpad", "pushback", "wheelslip", ...ids.map(id => REC[id]?.[0] || id)], rows, events: [] };
+    let prev = {};
+    for (const row of rows) {
+      const L = { t: row[0], st: row[1], pb: row[3], ws: row[4] };
+      if (prev.st === "Running" && L.st !== "Running") data.events.push({ t: L.t, kind: "stop", text: "Disengaged" });
+      if (prev.st && prev.st !== "Running" && L.st === "Running") data.events.push({ t: L.t, kind: "info", text: "Engaged" });
+      if (L.pb && L.pb !== prev.pb && L.pb !== "Centering") data.events.push({ t: L.t, kind: "pb", text: L.pb });
+      if (L.ws && !prev.ws) data.events.push({ t: L.t, kind: "pb", text: "Wheel slip" });
+      prev = L;
+    }
+    $("#recStatus").textContent = `Downloaded ${rows.length} samples (${rows[rows.length - 1][0].toFixed(2)} s). Recording starts again next time you engage.`;
+    showLog(data);
+  } catch (e) {
+    $("#recStatus").textContent = "Couldn't download the recording: " + e.message; log(e.message, "err");
+  } finally { $("#fetch").disabled = false; setTimeout(() => bar.hidden = true, 800); }
+};
+
+// ---------- Saved logs ----------
+$("#open").onclick = () => $("#file").click();
+$("#file").onchange = e => { const f = e.target.files[0]; e.target.value = ""; f && f.text().then(t => showLog(JSON.parse(t))).catch(err => setStatus("That file isn't a VESC Logger log: " + err.message, true)); };
+$("#recover").onclick = async () => { const d = await idbGet("live"); if (d) showLog(d); };
+idbGet("live").then(d => { if (d?.rows?.length) { $("#recover").hidden = false; $("#recover").textContent = `Open last live log (${d.rows.length} samples)`; } });
+
+function idb() { return new Promise((res, rej) => { const r = indexedDB.open("vesc-logger", 1); r.onupgradeneeded = () => r.result.createObjectStore("logs"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbSet(k, v) { try { const db = await idb(); db.transaction("logs", "readwrite").objectStore("logs").put(v, k); } catch (e) {} }
+async function idbGet(k) { try { const db = await idb(); return await new Promise(res => { const q = db.transaction("logs").objectStore("logs").get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); } catch (e) { return null; } }
+
+// ---------- Charts ----------
+const GROUPS = [
+  ["Duty cycle (%)", /duty/],
+  ["Speed (km/h)", /speed/],
+  ["Motor speed (ERPM)", /erpm/],
+  ["Current (A)", /current|amp(?!_hours)|_a$/],
+  ["Battery voltage (V)", /batt.*v$|battery_v|voltage/],
+  ["Angles (°)", /pitch|roll|yaw|setpoint|_deg$/],
+  ["Foot sensors (V)", /footpad|adc/],
+  ["Temperature (°C)", /temp/],
+];
+let plots = [], current = null;
+
+function showLog(data) {
+  current = data;
+  $("#results").hidden = false;
+  const src = data.source === "recording" ? "Refloat on-board recording" : "Live log";
+  const dur = data.rows.length ? data.rows[data.rows.length - 1][0] : 0;
+  $("#resTitle").textContent = src;
+  $("#resMeta").textContent = [data.board?.bluetoothName, data.board?.hw, data.board?.package, `${data.rows.length} samples over ${dur.toFixed(1)} s`, new Date(data.started).toLocaleString()].filter(Boolean).join(" · ");
+  for (const p of plots) p.destroy();
+  plots = [];
+  const charts = $("#charts"); charts.replaceChildren();
+  const x = data.rows.map(r => r[0]);
+  const numeric = data.columns.map((c, i) => i > 0 && data.rows.some(r => typeof r[i] === "number" && c !== "footpad" && c !== "wheelslip"));
+  const used = new Set();
+  const css = getComputedStyle(document.documentElement), col = i => css.getPropertyValue(`--s${(i % 6) + 1}`).trim();
+  const fg = css.getPropertyValue("--muted").trim(), grid = css.getPropertyValue("--line").trim();
+  const groups = GROUPS.map(([title, re]) => [title, data.columns.map((c, i) => i).filter(i => numeric[i] && !used.has(i) && re.test(data.columns[i]) && used.add(i))]);
+  const rest = data.columns.map((c, i) => i).filter(i => numeric[i] && !used.has(i));
+  if (rest.length) groups.push(["Other", rest]);
+  const width = () => Math.max(280, charts.clientWidth - 22);
+  const sync = uPlot.sync("log");
+  for (const [title, idx] of groups) {
+    if (!idx.length) continue;
+    const box = el("div", { className: "panel" }, el("h3", { textContent: title }));
+    charts.append(box);
+    const opts = {
+      width: width(), height: 170, cursor: { sync: { key: "log", setSeries: false }, drag: { x: true, y: false } },
+      scales: { x: { time: false } },
+      axes: [{ stroke: fg, grid: { stroke: grid }, ticks: { stroke: grid }, values: (u, v) => v.map(s => s.toFixed(1) + "s") }, { stroke: fg, grid: { stroke: grid }, ticks: { stroke: grid }, size: 56, values: (u, v) => v.map(n => Math.abs(n) >= 10000 ? (n / 1000).toFixed(0) + "k" : Math.abs(n) >= 1000 ? (n / 1000).toFixed(1) + "k" : +n.toFixed(2)) }],
+      series: [{ label: "Time", value: (u, v) => v == null ? "–" : v.toFixed(3) + " s" }, ...idx.map((i, k) => ({ label: data.columns[i], stroke: col(k), width: 1.4, value: (u, v) => v == null ? "–" : (+v.toFixed(3)).toString() }))],
+      hooks: { setSelect: [u => { if (u.select.width > 4) zoomTo(u.posToVal(u.select.left, "x"), u.posToVal(u.select.left + u.select.width, "x")); u.setSelect({ width: 0 }, false); }] },
+    };
+    const plot = new uPlot(opts, [x, ...idx.map(i => data.rows.map(r => typeof r[i] === "number" ? r[i] : null))], box);
+    sync.sub(plot);
+    plots.push(plot);
+  }
+  new ResizeObserver(() => { for (const p of plots) p.setSize({ width: width(), height: 170 }); }).observe(charts);
+  // Events
+  const ev = $("#events");
+  ev.replaceChildren(el("h3", { textContent: data.events.length ? "Events" : "No events" }));
+  if (!data.events.length) ev.append(el("p", { className: "muted", textContent: "Disengages, pushbacks, wheel slip and alerts show up here. Tap one to zoom to it." }));
+  for (const e of data.events) ev.append(el("button", { type: "button", className: "ev " + e.kind, onclick: () => zoomTo(e.t - 4, e.t + 1) }, el("time", { textContent: e.t.toFixed(2) + "s" }), el("span", { textContent: e.text })));
+  $("#results").scrollIntoView({ behavior: "smooth" });
+}
+
+function zoomTo(a, b) { for (const p of plots) p.setScale("x", { min: Math.max(a, 0), max: b }); }
+$("#resetZoom").onclick = () => { if (!current) return; const r = current.rows; zoomTo(r[0][0], r[r.length - 1][0]); };
+
+function download(name, text, type) {
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+const baseName = () => ["vesc-log", current.board?.bluetoothName, current.source, current.started.slice(0, 19).replace(/[:T]/g, "-")].filter(Boolean).map(s => String(s).replace(/[^\w-]+/g, "_")).join("-");
+$("#dlCsv").onclick = () => {
+  const q = v => typeof v === "string" && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v ?? "";
+  download(baseName() + ".csv", [current.columns.join(","), ...current.rows.map(r => r.map(q).join(","))].join("\n"), "text/csv");
+};
+$("#dlJson").onclick = () => download(baseName() + ".json", JSON.stringify(current), "application/json");
+</script>
+</body>
+</html>
