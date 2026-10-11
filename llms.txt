@@ -5,6 +5,7 @@
 - Site: https://vesc.9dtr.com/
 - Config viewer: https://vesc.9dtr.com/viewer.html
 - Ride logger: https://vesc.9dtr.com/logger.html
+- Compare configs: https://vesc.9dtr.com/compare.html
 - Source code: https://github.com/skermiebroTech/vesc-config-saver
 
 ## What it reads
@@ -17,6 +18,9 @@
 - Live logging over Bluetooth, about 10 to 30 samples a second, logging every value the board offers (about 95 columns on a Refloat board). Every sample: all of Refloat's REALTIME_DATA fields (speed, ERPM, motor, directional, filtered and battery current, duty, voltage, battery %, temperatures, pitch, balance pitch, roll, foot sensors, remote input, every setpoint, balance current, loop frequency, odometer, distance, Ah/Wh used and charged, charging voltage and current, FOC d-axis current, GPS when fitted, and the package state, mode, pushback type, stop reason, alerts, wheel slip, charging and fatal error flags). Every 5th sample: COMM_GET_VALUES_SELECTIVE (fault codes, FOC currents and voltages, each MOSFET temperature, tachometer). Every 10th: COMM_GET_IMU_DATA (raw accelerometer, gyro, orientation). Every 20th: COMM_BMS_GET_VALUES (cell voltages) when a VESC BMS is present. Every 2nd sample (Refloat): the extra values from Refloat's internal live data command (REALTIME_DATA_INTERNAL, read by the value names from REALTIME_DATA_INTERNAL_IDS): loop timing and latency, ATR acceleration difference, speed boost, transition boost, booster torque. Refloat's alert log (ALERTS_LIST) is read at the start and end of each log and after a recording download; entries become events. Without Refloat, VESC values and IMU on every sample.
 - Downloads Refloat's on-board data recording (DATA_RECORD command): a few seconds at the full balance-loop rate, recorded in the controller. Requires firmware with the data recording buffer (Refloat Extras, for example v7.00-rflt-xtras).
 - Synced charts, an event list (disengages with their reason, pushbacks, wheel slip, alerts) and CSV export.
+
+## Compare configs
+Opens two saved configs (or one config against the default values) and lists every setting that differs, grouped by page and section, with both values, the change with direction and percentage, the beginner note, and a CSV download. Works across firmware versions by matching setting names. Runs in any browser; no Bluetooth needed.
 
 ## Safety and privacy
 - Only read commands are sent (COMM_FW_VERSION, COMM_PING_CAN, COMM_GET_MCCONF, COMM_GET_APPCONF, COMM_GET_CUSTOM_CONFIG_XML, COMM_GET_CUSTOM_CONFIG, wrapped in COMM_FORWARD_CAN for devices on CAN). No write, reboot or firmware commands exist in the code. The ride logger also sends COMM_GET_VALUES_SELECTIVE, COMM_GET_IMU_DATA, COMM_BMS_GET_VALUES and Refloat package commands (INFO, REALTIME_DATA, REALTIME_DATA_INTERNAL, REALTIME_DATA_INTERNAL_IDS, ALERTS_LIST, and DATA_RECORD status and download only; ALERTS_CONTROL is not used). Downloading Refloat's recording pauses it, the same as Refloat's own UI; it restarts on the next engage. The commands that start or stop recording or change its settings are not used.
