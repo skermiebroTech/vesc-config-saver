@@ -1,0 +1,7 @@
+# Claude / AI assistant files
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+.mcp.json
+.claude.json
