@@ -7,6 +7,8 @@
 <meta name="description" content="Log your VESC board's ride data over Bluetooth, or download Refloat's on-board data recording, and see it on synced charts with a CSV export.">
 <meta name="theme-color" content="#3cc79c">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- seo:head -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
@@ -614,5 +616,6 @@ $("#dlCsv").onclick = () => {
 };
 $("#dlJson").onclick = () => download(baseName() + ".json", JSON.stringify(current), "application/json");
 </script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>

@@ -45,6 +45,10 @@ Open the GitHub Pages site in Chrome on Android (Web Bluetooth needs Chrome and 
 
 Readable motor and app values work for every VESC firmware release from 3.55 to 7.01, including the built-in Balance app in older firmware (3.62 to 6.02). The definitions in `desc/` are generated from VESC Tool's parameter files. On any other version the raw data is still saved, and Refloat or Float package settings are always readable because the controller sends their definition.
 
+## Offline
+
+After the first visit the whole app is stored on the phone, so the saver, viewer, logger and compare pages work with no signal (handy at the trail head). Chrome's menu, or the **Install app** link at the bottom of the saver page, adds it to the home screen as its own app. When you are online it fetches the newest version in the background, and the next launch uses it. `sw.js` holds the list of stored files; the publish step gives each release a new cache name.
+
 ## Hosting
 
 Settings → Pages → Deploy from a branch → `main`, folder `/ (root)`.

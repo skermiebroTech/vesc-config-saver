@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#3cc79c">
 <!-- seo:head -->
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: phone = header then one column of cards; desktop = sticky sidebar (tabs, search, section list) beside a multi-column card grid. */
@@ -269,5 +271,6 @@ function makeCard(name, v, d, q, onlyChanged) {
 
 for (const id of ["#q", "#changed", "#unused"]) $(id).addEventListener("input", () => state.cfg && render());
 </script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>

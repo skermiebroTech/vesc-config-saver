@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#3cc79c">
 <!-- seo:head -->
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
 /* Layout: one narrow column, a big connect/save control, then a live log and a readout of key tune values. */
@@ -91,6 +93,7 @@ summary:focus-visible, .foot a:focus-visible { outline: 3px solid var(--accent);
   <!-- seo:about -->
 
   <footer class="foot">
+    <a href="#" id="install" hidden>Install app (works offline)</a>
     <a href="viewer.html">Config viewer</a>
     <a href="logger.html">Ride logger</a>
     <a href="compare.html">Compare configs</a>
@@ -226,6 +229,15 @@ async function run() {
 }
 
 $("#go").addEventListener("click", run);
+</script>
+<script>
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// Show "Install app" when the browser offers it.
+let installPrompt = null;
+const installLink = document.getElementById("install");
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; installLink.hidden = false; });
+addEventListener("appinstalled", () => { installLink.hidden = true; });
+installLink.addEventListener("click", async e => { e.preventDefault(); if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; installLink.hidden = true; });
 </script>
 </body>
 </html>

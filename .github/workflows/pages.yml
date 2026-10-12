@@ -59,6 +59,9 @@ jobs:
           for f in seo/*; do
             case "$(basename "$f")" in head-*.html|about-*.html|README.md) ;; *) cp "$f" _site/ ;; esac
           done
+          # New cache name for each publish, so installed copies pick up the update.
+          sed -i "s/__VERSION__/$(git -C app rev-parse --short HEAD)-$(git -C seo rev-parse --short HEAD)/" _site/sw.js
+          grep -n 'const VERSION' _site/sw.js
           ls -la _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

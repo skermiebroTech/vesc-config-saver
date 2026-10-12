@@ -1,0 +1,20 @@
+{
+  "name": "VESC Config Saver",
+  "short_name": "VESC Saver",
+  "description": "Read, explain, compare and log the settings of VESC balance boards over Bluetooth. Works offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1513",
+  "theme_color": "#3cc79c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Config viewer", "url": "viewer.html", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Ride logger", "url": "logger.html", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Compare configs", "url": "compare.html", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ]
+}

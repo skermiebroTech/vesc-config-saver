@@ -7,6 +7,8 @@
 <meta name="description" content="Compare two VESC configs side by side: every setting that differs, with plain-language explanations.">
 <meta name="theme-color" content="#3cc79c">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- seo:head -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -264,5 +266,6 @@ $("#csv").onclick = () => {
   document.body.append(a); a.click(); a.remove();
 };
 </script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 </body>
 </html>
