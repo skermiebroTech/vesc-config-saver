@@ -102,7 +102,7 @@ details.log summary { cursor: pointer; color: var(--muted); font-size: .9rem }
 
   <section class="card" id="liveCard">
     <h2>Live log</h2>
-    <p class="muted">Records while you ride, about 10–30 times a second over Bluetooth. Keep the screen on and this page open; Android drops Bluetooth when the screen turns off.</p>
+    <p class="muted">Records while you ride, about 5–15 times a second over Bluetooth, depending on the board. Keep the screen on and this page in front: Android pauses the page when the screen turns off or you switch apps, and nothing is logged until you come back.</p>
     <button class="btn" id="live" type="button" disabled>Start live log</button>
     <div class="readouts" id="readouts" hidden>
       <div class="ro"><span>Speed</span><b id="r-speed">–</b></div>
@@ -262,7 +262,13 @@ async function checkRecording() {
 // ---------- Live log ----------
 let live = null, wakeLock = null;
 async function keepAwake() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {} }
-document.addEventListener("visibilitychange", () => { if (live && document.visibilityState === "visible") keepAwake(); });
+// Android pauses a page whose screen is off or that is behind another app, so nothing is logged then. Mark it in the log.
+document.addEventListener("visibilitychange", () => {
+  if (!live) return;
+  const t = live.rows.length ? live.rows[live.rows.length - 1][0] : 0;
+  if (document.visibilityState === "visible") { keepAwake(); live.events.push({ t, kind: "info", text: "Page back on screen" }); }
+  else live.events.push({ t, kind: "stop", text: "Page hidden (screen off or another app): no data until it is back" });
+});
 
 $("#live").onclick = () => { if (!live) startLive(); else live.stopRequested = true; };
 
@@ -299,18 +305,31 @@ async function startLive() {
   await keepAwake();
   log(`Live log started: ${cols.length} values` + (rf ? ". Refloat data every sample, VESC values every 5th, raw IMU every 10th" : ", VESC values and IMU every sample") + (bmsCells ? ", BMS every 20th." : "."));
   const save = setInterval(() => idbSet("live", logData(live)), 5000);
-  let rateT = performance.now(), rateN = 0;
+  let rateT = performance.now(), rateN = 0, lastStart = 0;
+  // Keep two samples on their way at once (one when the link is struggling), and take results in order.
+  const inflight = [];
+  live.depth = 2; live.okRun = 0;
   while (live) {
     if (live.stopRequested) {
+      await Promise.all(inflight);
       if (live.useRefloat && live.t0 !== null) await readAlerts(live, live.t0, rf.tickRate || 10000);
       stopLive(); break;
     }
-    const t = performance.now();
+    while (inflight.length < live.depth) {
+      const wait = 30 - (performance.now() - lastStart); // at most about 33 samples a second
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      lastStart = performance.now();
+      inflight.push(sample(rf, live.n++).then(vals => ({ vals }), err => ({ err })));
+    }
     try {
-      const vals = await sample(rf, live.n++);
+      const { vals, err } = await inflight.shift();
+      const t = performance.now();
       if (!live) break;
+      if (err) throw err;
       live.failures = 0;
-      const row = [vals.time_s, ...live.columns.slice(1).map(c => vals[c] ?? null)];
+      if (++live.okRun > 100) live.depth = 2;
+      // Leftovers like 1e-30 (a setpoint that has decayed to nothing) are stored as 0.
+      const row = [vals.time_s, ...live.columns.slice(1).map(c => typeof vals[c] === "number" && Math.abs(vals[c]) < 1e-9 ? 0 : vals[c] ?? null)];
       live.rows.push(row);
       noteEvents(live, vals);
       if (live.rows.length === 1 && live.useRefloat) await readAlerts(live, live.t0, rf.tickRate || 10000);
@@ -319,12 +338,10 @@ async function startLive() {
       showReadouts(vals);
     } catch (e) {
       if (!live) break;
-      live.failures++;
+      live.failures++; live.depth = 1; live.okRun = 0;
       if (live.failures === 1) live.events.push({ t: live.rows.length ? live.rows[live.rows.length - 1][0] : 0, kind: "info", text: "Bluetooth dropout" });
       if (live.failures > 20) { log("Lost the connection to the board.", "err"); setStatus("Connection lost. The log so far is kept.", true); stopLive(); break; }
     }
-    const wait = 30 - (performance.now() - t); // at most about 33 samples a second
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
   }
   clearInterval(save);
 }
@@ -344,12 +361,15 @@ function stopLive() {
 async function sample(rf, n) {
   const o = {};
   if (rf) {
-    Object.assign(o, await readRefloat(rf));
-    if (n % 5 === 0) Object.assign(o, await readValues());
-    if (live.internal && n % 2 === 1) Object.assign(o, await readInternal());
-    if (n % 10 === 5) Object.assign(o, await readImu());
+    // Send every request for this sample at once: the board answers them in turn, so a sample
+    // costs about one Bluetooth round trip instead of one per request.
+    const reads = [readRefloat(rf)];
+    if (n % 5 === 0) reads.push(readValues());
+    if (live.internal && n % 2 === 1) reads.push(readInternal());
+    if (n % 10 === 5) reads.push(readImu());
+    for (const part of await Promise.all(reads)) Object.assign(o, part);
   } else {
-    Object.assign(o, await readValues(), await readImu());
+    for (const part of await Promise.all([readValues(), readImu()])) Object.assign(o, part);
     if (live.t0 === null) live.t0 = performance.now();
     o.time_s = (performance.now() - live.t0) / 1000;
   }
@@ -428,6 +448,7 @@ async function readImu() {
   const r = new Reader(await link.request([65, ...[0xF1FF >> 8, 0xF1FF & 255]], { timeout: 800, tries: 1 }), 3);
   const o = {};
   for (const name of IMU_COLS) o[name] = r.f32auto();
+  for (const a of ["imu_roll_deg", "imu_pitch_deg", "imu_yaw_deg"]) o[a] *= 180 / Math.PI; // the firmware sends radians
   return o;
 }
 
